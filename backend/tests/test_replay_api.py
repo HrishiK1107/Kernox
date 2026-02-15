@@ -8,7 +8,6 @@ import json
 from app.main import app
 from app.services.endpoint_registry import endpoint_registry
 
-
 client = TestClient(app)
 
 
@@ -36,22 +35,21 @@ def build_event(event_id: str):
 
 
 def test_replay_protection():
-
     secret = "secret-replay-123456"
     endpoint_registry.register("node-replay", "ubuntu", secret)
 
     event_id = str(uuid4())
     payload = build_event(event_id)
     raw = json.dumps(payload).encode()
-    
-     
+
+    hashed_secret = hashlib.sha256(secret.encode()).hexdigest()
+
     signature = hmac.new(
-        secret.encode(),
+        hashed_secret.encode(),
         raw,
         hashlib.sha256
     ).hexdigest()
 
-    # First request
     response1 = client.post(
         "/api/v1/events",
         data=raw,
@@ -63,7 +61,6 @@ def test_replay_protection():
 
     assert response1.status_code == 202
 
-    # Second request (replay)
     response2 = client.post(
         "/api/v1/events",
         data=raw,
