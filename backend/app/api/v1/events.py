@@ -5,6 +5,9 @@ from fastapi.responses import JSONResponse
 from app.schemas.event_schema import Event
 from app.services.endpoint_registry import endpoint_registry
 from app.services.event_guard import event_guard
+from datetime import datetime, timezone
+from app.core.config import settings
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -40,6 +43,25 @@ async def ingest_event(request: Request, event: Event):
 
     # Record event as seen
     event_guard.record(str(event.event_id))
+
+        # ─────────────────────────────────────────────
+    # 3️⃣ TIMESTAMP DRIFT VALIDATION
+    # ─────────────────────────────────────────────
+    now = datetime.now(timezone.utc)
+    event_time = event.timestamp
+
+    drift = abs((now - event_time).total_seconds())
+
+    if drift > settings.MAX_TIMESTAMP_DRIFT_SECONDS:
+        logger.warning(
+            f"Rejected event due to timestamp drift | "
+            f"event_id={event.event_id} | drift={drift}s"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid timestamp drift",
+        )
+
 
     # ─────────────────────────────────────────────
     # 3️⃣ ACCEPT EVENT
