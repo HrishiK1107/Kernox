@@ -1,6 +1,9 @@
 from fastapi.testclient import TestClient
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+import hmac
+import hashlib
+import json
 
 from app.main import app
 from app.services.endpoint_registry import endpoint_registry
@@ -33,28 +36,58 @@ def build_event(event_id: str, timestamp: str):
 
 
 def test_timestamp_within_drift_passes():
-    endpoint_registry.register("node-drift", "ubuntu")
+
+    secret = "secret-drift-123456"
+    endpoint_registry.register("node-drift", "ubuntu", secret)
 
     now = datetime.now(timezone.utc).isoformat()
     event_id = str(uuid4())
+    payload = build_event(event_id, now)
+
+    raw = json.dumps(payload).encode()
+
+    signature = hmac.new(
+        secret.encode(),
+        raw,
+        hashlib.sha256
+    ).hexdigest()
 
     response = client.post(
         "/api/v1/events",
-        json=build_event(event_id, now)
+        data=raw,
+        headers={
+            "Content-Type": "application/json",
+            "X-Signature": signature,
+        },
     )
 
     assert response.status_code == 202
 
 
 def test_timestamp_outside_drift_fails():
-    endpoint_registry.register("node-drift", "ubuntu")
+
+    secret = "secret-drift-123456"
+    endpoint_registry.register("node-drift", "ubuntu", secret)
 
     old_time = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
     event_id = str(uuid4())
+    payload = build_event(event_id, old_time)
+
+    raw = json.dumps(payload).encode()
+
+    signature = hmac.new(
+        secret.encode(),
+        raw,
+        hashlib.sha256
+    ).hexdigest()
 
     response = client.post(
         "/api/v1/events",
-        json=build_event(event_id, old_time)
+        data=raw,
+        headers={
+            "Content-Type": "application/json",
+            "X-Signature": signature,
+        },
     )
 
     assert response.status_code == 400
