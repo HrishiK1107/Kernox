@@ -105,29 +105,34 @@ class NetworkMonitor:
         self._bpf["net_events"].open_perf_buffer(self._handle_event)
 
     def _handle_event(self, cpu, data, size) -> None:
-        event = ctypes.cast(data, ctypes.POINTER(NetEvent)).contents
+        if not self._running:
+            return
+        try:
+            event = ctypes.cast(data, ctypes.POINTER(NetEvent)).contents
 
-        pid = event.pid
-        uid = event.uid
-        comm = event.comm.decode("utf-8", errors="replace")
-        username = _uid_to_username(uid)
-        daddr = _int_to_ip(event.daddr)
-        dport = event.dport
+            pid = event.pid
+            uid = event.uid
+            comm = event.comm.decode("utf-8", errors="replace")
+            username = _uid_to_username(uid)
+            daddr = _int_to_ip(event.daddr)
+            dport = event.dport
 
-        self._emitter.emit({
-            "event_type": "network_connect",
-            "pid": pid,
-            "ppid": event.ppid,
-            "uid": uid,
-            "username": username,
-            "process_name": comm,
-            "dest_ip": daddr,
-            "dest_port": dport,
-            "protocol": "TCP",
-        })
+            self._emitter.emit({
+                "event_type": "network_connect",
+                "pid": pid,
+                "ppid": event.ppid,
+                "uid": uid,
+                "username": username,
+                "process_name": comm,
+                "dest_ip": daddr,
+                "dest_port": dport,
+                "protocol": "TCP",
+            })
 
-        # Beaconing detection
-        self._check_beaconing(pid, daddr, dport, comm, username)
+            # Beaconing detection
+            self._check_beaconing(pid, daddr, dport, comm, username)
+        except Exception:
+            pass
 
     def _check_beaconing(
         self, pid: int, daddr: str, dport: int, comm: str, username: str

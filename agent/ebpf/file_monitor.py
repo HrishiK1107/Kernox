@@ -109,31 +109,36 @@ class FileMonitor:
         self._bpf["file_events"].open_perf_buffer(self._handle_event)
 
     def _handle_event(self, cpu, data, size) -> None:
-        event = ctypes.cast(data, ctypes.POINTER(FileEvent)).contents
+        if not self._running:
+            return
+        try:
+            event = ctypes.cast(data, ctypes.POINTER(FileEvent)).contents
 
-        pid = event.pid
-        uid = event.uid
-        etype = event.event_type
-        comm = event.comm.decode("utf-8", errors="replace")
-        fname = event.filename.decode("utf-8", errors="replace")
-        username = _uid_to_username(uid)
+            pid = event.pid
+            uid = event.uid
+            etype = event.event_type
+            comm = event.comm.decode("utf-8", errors="replace")
+            fname = event.filename.decode("utf-8", errors="replace")
+            username = _uid_to_username(uid)
 
-        event_name = _EVENT_TYPE_NAMES.get(etype, f"file_unknown_{etype}")
+            event_name = _EVENT_TYPE_NAMES.get(etype, f"file_unknown_{etype}")
 
-        self._emitter.emit({
-            "event_type": event_name,
-            "pid": pid,
-            "ppid": event.ppid,
-            "uid": uid,
-            "username": username,
-            "process_name": comm,
-            "filename": fname,
-            "flags": event.flags,
-        })
+            self._emitter.emit({
+                "event_type": event_name,
+                "pid": pid,
+                "ppid": event.ppid,
+                "uid": uid,
+                "username": username,
+                "process_name": comm,
+                "filename": fname,
+                "flags": event.flags,
+            })
 
-        # Burst detection for writes and renames
-        if etype in (FILE_EVENT_WRITE, FILE_EVENT_RENAME):
-            self._check_burst(pid, comm, username)
+            # Burst detection for writes and renames
+            if etype in (FILE_EVENT_WRITE, FILE_EVENT_RENAME):
+                self._check_burst(pid, comm, username)
+        except Exception:
+            pass
 
     def _check_burst(self, pid: int, comm: str, username: str) -> None:
         now = time.time()

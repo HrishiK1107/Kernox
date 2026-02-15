@@ -94,31 +94,36 @@ class PrivEscalationMonitor:
         self._bpf["priv_events"].open_perf_buffer(self._handle_event)
 
     def _handle_event(self, cpu, data, size) -> None:
-        event = ctypes.cast(data, ctypes.POINTER(PrivEvent)).contents
+        if not self._running:
+            return
+        try:
+            event = ctypes.cast(data, ctypes.POINTER(PrivEvent)).contents
 
-        pid = event.pid
-        uid = event.uid
-        target_id = event.target_id
-        etype = event.event_type
-        comm = event.comm.decode("utf-8", errors="replace")
-        username = _uid_to_username(uid)
+            pid = event.pid
+            uid = event.uid
+            target_id = event.target_id
+            etype = event.event_type
+            comm = event.comm.decode("utf-8", errors="replace")
+            username = _uid_to_username(uid)
 
-        event_name = _EVENT_TYPE_NAMES.get(etype, f"privilege_unknown_{etype}")
+            event_name = _EVENT_TYPE_NAMES.get(etype, f"privilege_unknown_{etype}")
 
-        # Determine severity: escalation to root is CRITICAL
-        severity = "MEDIUM"
-        if target_id == 0 and uid != 0:
-            severity = "CRITICAL"
-            event_name = "privilege_escalation_to_root"
+            # Determine severity: escalation to root is CRITICAL
+            severity = "MEDIUM"
+            if target_id == 0 and uid != 0:
+                severity = "CRITICAL"
+                event_name = "privilege_escalation_to_root"
 
-        self._emitter.emit({
-            "event_type": event_name,
-            "pid": pid,
-            "ppid": event.ppid,
-            "uid": uid,
-            "username": username,
-            "process_name": comm,
-            "target_id": target_id,
-            "target_username": _uid_to_username(target_id),
-            "severity": severity,
-        })
+            self._emitter.emit({
+                "event_type": event_name,
+                "pid": pid,
+                "ppid": event.ppid,
+                "uid": uid,
+                "username": username,
+                "process_name": comm,
+                "target_id": target_id,
+                "target_username": _uid_to_username(target_id),
+                "severity": severity,
+            })
+        except Exception:
+            pass

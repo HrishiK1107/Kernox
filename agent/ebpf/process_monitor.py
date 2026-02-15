@@ -125,65 +125,75 @@ class ProcessMonitor:
 
     def _handle_exec_event(self, cpu, data, size) -> None:
         """Process a process-execution event from the eBPF program."""
-        event = ctypes.cast(data, ctypes.POINTER(ExecEvent)).contents
+        if not self._running:
+            return
+        try:
+            event = ctypes.cast(data, ctypes.POINTER(ExecEvent)).contents
 
-        pid = event.pid
-        ppid = event.ppid
-        uid = event.uid
-        comm = event.comm.decode("utf-8", errors="replace")
-        filename = event.filename.decode("utf-8", errors="replace")
-        username = _uid_to_username(uid)
+            pid = event.pid
+            ppid = event.ppid
+            uid = event.uid
+            comm = event.comm.decode("utf-8", errors="replace")
+            filename = event.filename.decode("utf-8", errors="replace")
+            username = _uid_to_username(uid)
 
-        # Update the process tree
-        self._tree.add_process(
-            pid=pid,
-            ppid=ppid,
-            comm=comm,
-            cmdline=filename,
-            uid=uid,
-            username=username,
-        )
+            # Update the process tree
+            self._tree.add_process(
+                pid=pid,
+                ppid=ppid,
+                comm=comm,
+                cmdline=filename,
+                uid=uid,
+                username=username,
+            )
 
-        # Get lineage from the tree
-        lineage = self._tree.get_lineage_string(pid)
+            # Get lineage from the tree
+            lineage = self._tree.get_lineage_string(pid)
 
-        # Emit enriched event
-        self._emitter.emit({
-            "event_type": "process_exec",
-            "pid": pid,
-            "ppid": ppid,
-            "uid": uid,
-            "username": username,
-            "process_name": comm,
-            "filename": filename,
-            "lineage": lineage,
-        })
+            # Emit enriched event
+            self._emitter.emit({
+                "event_type": "process_exec",
+                "pid": pid,
+                "ppid": ppid,
+                "uid": uid,
+                "username": username,
+                "process_name": comm,
+                "filename": filename,
+                "lineage": lineage,
+            })
+        except Exception:
+            pass
 
     def _handle_exit_event(self, cpu, data, size) -> None:
         """Process a process-exit event from the eBPF program."""
-        event = ctypes.cast(data, ctypes.POINTER(ExitEvent)).contents
+        if not self._running:
+            return
+        try:
+            event = ctypes.cast(data, ctypes.POINTER(ExitEvent)).contents
 
-        pid = event.pid
-        ppid = event.ppid
-        uid = event.uid
-        comm = event.comm.decode("utf-8", errors="replace")
-        exit_code = event.exit_code
-        username = _uid_to_username(uid)
+            pid = event.pid
+            ppid = event.ppid
+            uid = event.uid
+            comm = event.comm.decode("utf-8", errors="replace")
+            exit_code = event.exit_code
+            username = _uid_to_username(uid)
 
-        # Get lineage before removing from tree
-        lineage = self._tree.get_lineage_string(pid)
+            # Get lineage before removing from tree
+            lineage = self._tree.get_lineage_string(pid)
 
-        # Emit exit event
-        self._emitter.emit({
-            "event_type": "process_exit",
-            "pid": pid,
-            "ppid": ppid,
-            "uid": uid,
-            "username": username,
-            "process_name": comm,
-            "exit_code": exit_code,
-            "lineage": lineage,
-        })
+            # Emit exit event
+            self._emitter.emit({
+                "event_type": "process_exit",
+                "pid": pid,
+                "ppid": ppid,
+                "uid": uid,
+                "username": username,
+                "process_name": comm,
+                "exit_code": exit_code,
+                "lineage": lineage,
+            })
 
-        # Remove from process tree
-        self._tree.remove_process(pid)
+            # Remove from process tree
+            self._tree.remove_process(pid)
+        except Exception:
+            pass
