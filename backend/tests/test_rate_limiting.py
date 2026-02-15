@@ -50,6 +50,7 @@ def test_rate_limit_blocks_after_threshold():
         payload = build_event(event_id)
         raw = json.dumps(payload).encode()
 
+        hashed_secret = hashlib.sha256(secret.encode()).hexdigest()
         signature = hmac.new(
             secret.encode(),
             raw,
