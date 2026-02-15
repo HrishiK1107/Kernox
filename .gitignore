@@ -28,3 +28,5 @@ agent_stderr.log
 # Byte-compiled
 *.o
 *.so
+#txt
+discription.txt
