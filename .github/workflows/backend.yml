@@ -41,5 +41,7 @@ jobs:
           bandit -r app -ll
 
       - name: Run tests
+        env:
+          PYTHONPATH: .
         run: |
           pytest
