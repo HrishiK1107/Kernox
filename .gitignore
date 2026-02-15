@@ -28,3 +28,21 @@ agent_stderr.log
 # Byte-compiled
 *.o
 *.so
+
+# Backend specific
+backend/.env
+backend/venv/
+backend/__pycache__/
+
+# Test artifacts
+.coverage
+htmlcov/
+
+# Pytest cache
+.pytest_cache/
+
+# Ruff cache
+.ruff_cache/
+
+# Mypy cache (if added later)
+.mypy_cache/
