@@ -45,8 +45,11 @@ def test_valid_hmac_passes():
 
     raw = json.dumps(payload).encode()
 
+    # 🔐 IMPORTANT: use hashed secret as HMAC key
+    hashed_secret = hashlib.sha256(secret.encode()).hexdigest()
+
     signature = hmac.new(
-        secret.encode(),
+        hashed_secret.encode(),
         raw,
         hashlib.sha256
     ).hexdigest()
@@ -73,6 +76,7 @@ def test_invalid_hmac_fails():
 
     raw = json.dumps(payload).encode()
 
+    # Use wrong signature intentionally
     response = client.post(
         "/api/v1/events",
         data=raw,

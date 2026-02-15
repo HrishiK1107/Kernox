@@ -1,4 +1,8 @@
 import logging
+import hmac
+import hashlib
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Request, status, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -6,11 +10,7 @@ from app.schemas.event_schema import Event
 from app.services.endpoint_registry import endpoint_registry
 from app.services.event_guard import event_guard
 from app.services.rate_limiter import rate_limiter
-from datetime import datetime, timezone
 from app.core.config import settings
-import hmac
-import hashlib
-
 
 
 router = APIRouter()
@@ -32,9 +32,8 @@ async def ingest_event(request: Request, event: Event):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Unregistered endpoint",
         )
-    
 
-        # ─────────────────────────────────────────────
+    # ─────────────────────────────────────────────
     # 2️⃣ HMAC SIGNATURE VERIFICATION
     # ─────────────────────────────────────────────
     signature = request.headers.get("X-Signature")
@@ -43,6 +42,41 @@ async def ingest_event(request: Request, event: Event):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing signature",
+        )
+
+    raw_body = await request.body()
+
+    endpoint_id = event.endpoint.endpoint_id
+    endpoint = endpoint_registry._endpoints.get(endpoint_id)
+
+    if not endpoint:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Unregistered endpoint",
+        )
+
+    # Using secret_hash as HMAC key (unchanged logic)
+    secret_key = endpoint["secret_hash"]
+
+    expected_signature = hmac.new(
+        secret_key.encode(),
+        raw_body,
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(signature, expected_signature):
+        logger.warning(
+            "invalid_signature",
+            extra={
+                "extra_data": {
+                    "event": "invalid_signature",
+                    "endpoint_id": endpoint_id,
+                }
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid signature",
         )
 
     # ─────────────────────────────────────────────
@@ -57,6 +91,7 @@ async def ingest_event(request: Request, event: Event):
             detail="Rate limit exceeded",
         )
 
+    # SECOND HMAC CHECK (kept exactly as-is)
     secret = endpoint_registry.get_secret(event.endpoint.endpoint_id)
 
     raw_body = await request.body()
@@ -77,7 +112,7 @@ async def ingest_event(request: Request, event: Event):
         )
 
     # ─────────────────────────────────────────────
-    # 2️⃣ REPLAY PROTECTION
+    # 4️⃣ REPLAY PROTECTION
     # ─────────────────────────────────────────────
     if event_guard.is_duplicate(str(event.event_id)):
         logger.warning(
@@ -88,17 +123,14 @@ async def ingest_event(request: Request, event: Event):
             detail="Duplicate event_id",
         )
 
-    # Record event as seen
     event_guard.record(str(event.event_id))
 
-        # ─────────────────────────────────────────────
-    # 3️⃣ TIMESTAMP DRIFT VALIDATION
+    # ─────────────────────────────────────────────
+    # 5️⃣ TIMESTAMP DRIFT VALIDATION
     # ─────────────────────────────────────────────
     now = datetime.now(timezone.utc)
-
     event_time = event.timestamp
 
-    # Normalize naive timestamps to UTC
     if event_time.tzinfo is None:
         event_time = event_time.replace(tzinfo=timezone.utc)
 
@@ -114,17 +146,16 @@ async def ingest_event(request: Request, event: Event):
             detail="Invalid timestamp drift",
         )
 
-
     # ─────────────────────────────────────────────
-    # 3️⃣ ACCEPT EVENT
+    # 6️⃣ ACCEPT EVENT
     # ─────────────────────────────────────────────
     logger.info(
         "Event accepted",
         extra={
             "extra_data": {
-              "event": "event_accepted",
-              "event_id": str(event.event_id),
-              "endpoint_id": event.endpoint.endpoint_id,
+                "event": "event_accepted",
+                "event_id": str(event.event_id),
+                "endpoint_id": event.endpoint.endpoint_id,
             },
         }
     )
