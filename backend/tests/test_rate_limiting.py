@@ -7,7 +7,6 @@ import json
 
 from app.main import app
 from app.services.endpoint_registry import endpoint_registry
-from app.services.rate_limiter import rate_limiter
 from app.core.config import settings
 
 
