@@ -79,7 +79,14 @@ def main() -> None:
     monitors = [file_monitor, net_monitor, priv_monitor]
 
     # ── Graceful shutdown ────────────────────────────────────
+    _shutting_down = False
+
     def shutdown(signum, frame):
+        nonlocal _shutting_down
+        if _shutting_down:
+            return
+        _shutting_down = True
+
         print("\n[*] Shutting down Kernox agent...", file=sys.stderr)
         proc_monitor.stop()
         for m in monitors:
@@ -88,7 +95,7 @@ def main() -> None:
         print(f"[*] Total events emitted: {emitter.event_count}", file=sys.stderr)
         print(f"[*] Processes tracked   : {tree.size}", file=sys.stderr)
         print("[*] Agent stopped.", file=sys.stderr)
-        sys.exit(0)
+        os._exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
