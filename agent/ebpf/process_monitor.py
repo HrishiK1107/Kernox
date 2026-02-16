@@ -152,7 +152,7 @@ class ProcessMonitor:
 
             # Emit enriched event
             self._emitter.emit({
-                "event_type": "process_exec",
+                "event_type": "process_start",
                 "pid": pid,
                 "ppid": ppid,
                 "uid": uid,
@@ -183,7 +183,7 @@ class ProcessMonitor:
 
             # Emit exit event
             self._emitter.emit({
-                "event_type": "process_exit",
+                "event_type": "process_stop",
                 "pid": pid,
                 "ppid": ppid,
                 "uid": uid,

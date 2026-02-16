@@ -59,35 +59,13 @@ class Heartbeat:
             self._stop_event.wait(timeout=HEARTBEAT_INTERVAL_SEC)
 
     def _send_heartbeat(self) -> None:
-        """Construct and emit a heartbeat message."""
+        """Construct and emit a heartbeat message via the emitter."""
         uptime = time.time() - self._start_time
 
-        heartbeat = {
-            "event_type": "agent_heartbeat",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "hostname": HOSTNAME,
-            "endpoint_id": ENDPOINT_ID,
-            "status": "alive",
-            "uptime_seconds": round(uptime, 1),
-            "system": {
-                "os": platform.system(),
-                "release": platform.release(),
-                "machine": platform.machine(),
-            },
-            "stats": {
-                "events_emitted": (
-                    self._emitter.event_count if self._emitter else 0
-                ),
-                "last_event_time": (
-                    self._emitter.last_event_time if self._emitter else None
-                ),
-                "tracked_processes": (
-                    self._tree.size if self._tree else 0
-                ),
-            },
-        }
-
-        line = json.dumps(heartbeat, default=str)
-        if EVENT_OUTPUT_MODE == "stdout":
-            sys.stdout.write(line + "\n")
-            sys.stdout.flush()
+        if self._emitter:
+            self._emitter.emit({
+                "event_type": "heartbeat",
+                "severity": "info",
+                "process_name": "kernox-agent",
+                "username": "root",
+            })

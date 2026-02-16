@@ -119,6 +119,7 @@ class NetworkMonitor:
 
             self._emitter.emit({
                 "event_type": "network_connect",
+                "severity": "low",
                 "pid": pid,
                 "ppid": event.ppid,
                 "uid": uid,
@@ -148,7 +149,8 @@ class NetworkMonitor:
 
             if len(self._conn_times[key]) >= self.BEACON_THRESHOLD:
                 self._emitter.emit({
-                    "event_type": "c2_beaconing_warning",
+                    "event_type": "alert_c2_beaconing",
+                    "severity": "high",
                     "pid": pid,
                     "username": username,
                     "process_name": comm,
@@ -156,6 +158,5 @@ class NetworkMonitor:
                     "dest_port": dport,
                     "connection_count": len(self._conn_times[key]),
                     "window_seconds": self.BEACON_WINDOW_SEC,
-                    "severity": "HIGH",
                 })
                 self._conn_times[key] = []

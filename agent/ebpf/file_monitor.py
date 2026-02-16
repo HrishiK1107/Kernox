@@ -35,6 +35,12 @@ _EVENT_TYPE_NAMES = {
     FILE_EVENT_RENAME: "file_rename",
 }
 
+_EVENT_SEVERITY = {
+    FILE_EVENT_OPEN: "info",
+    FILE_EVENT_WRITE: "low",
+    FILE_EVENT_RENAME: "medium",
+}
+
 
 class FileEvent(ctypes.Structure):
     _fields_ = [
@@ -121,10 +127,12 @@ class FileMonitor:
             fname = event.filename.decode("utf-8", errors="replace")
             username = _uid_to_username(uid)
 
-            event_name = _EVENT_TYPE_NAMES.get(etype, f"file_unknown_{etype}")
+            event_name = _EVENT_TYPE_NAMES.get(etype, "file_open")
+            severity = _EVENT_SEVERITY.get(etype, "info")
 
             self._emitter.emit({
                 "event_type": event_name,
+                "severity": severity,
                 "pid": pid,
                 "ppid": event.ppid,
                 "uid": uid,
@@ -151,13 +159,13 @@ class FileMonitor:
 
             if len(self._write_times[pid]) >= self.BURST_THRESHOLD:
                 self._emitter.emit({
-                    "event_type": "ransomware_burst_warning",
+                    "event_type": "alert_ransomware_burst",
+                    "severity": "high",
                     "pid": pid,
                     "username": username,
                     "process_name": comm,
                     "burst_count": len(self._write_times[pid]),
                     "window_seconds": self.BURST_WINDOW_SEC,
-                    "severity": "HIGH",
                 })
                 # Reset to avoid spamming
                 self._write_times[pid] = []

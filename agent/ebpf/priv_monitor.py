@@ -25,8 +25,8 @@ PRIV_SETUID = 1
 PRIV_SETGID = 2
 
 _EVENT_TYPE_NAMES = {
-    PRIV_SETUID: "privilege_setuid",
-    PRIV_SETGID: "privilege_setgid",
+    PRIV_SETUID: "privilege_change",
+    PRIV_SETGID: "privilege_change",
 }
 
 
@@ -106,13 +106,13 @@ class PrivEscalationMonitor:
             comm = event.comm.decode("utf-8", errors="replace")
             username = _uid_to_username(uid)
 
-            event_name = _EVENT_TYPE_NAMES.get(etype, f"privilege_unknown_{etype}")
+            event_name = _EVENT_TYPE_NAMES.get(etype, "privilege_change")
 
             # Determine severity: escalation to root is CRITICAL
-            severity = "MEDIUM"
+            severity = "medium"
             if target_id == 0 and uid != 0:
-                severity = "CRITICAL"
-                event_name = "privilege_escalation_to_root"
+                severity = "critical"
+                event_name = "alert_privilege_escalation"
 
             self._emitter.emit({
                 "event_type": event_name,
