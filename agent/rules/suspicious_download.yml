@@ -1,0 +1,12 @@
+name: Suspicious Curl Download
+description: Detects curl or wget downloading from external destinations
+severity: high
+conditions:
+  - field: process.name
+    operator: in
+    value: [curl, wget]
+  - field: event_type
+    operator: equals
+    value: network_connect
+match: all
+action: alert

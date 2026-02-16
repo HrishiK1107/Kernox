@@ -1,10 +1,10 @@
 Endpoint Detection & Response (EDR) with Attack Graph Correlation and Autonomous SOAR Response
 
-SentinelLite is a production-grade cybersecurity platform designed to provide real-time endpoint threat detection, multi-stage attack correlation, and controlled autonomous incident response for Linux environments. The system integrates Endpoint Detection and Response (EDR), Security Information and Event Management (SIEM), and Security Orchestration, Automation, and Response (SOAR) concepts into a unified architecture focused on high-fidelity detection and operational safety.
+Kernox is a production-grade cybersecurity platform designed to provide real-time endpoint threat detection, multi-stage attack correlation, and controlled autonomous incident response for Linux environments. The system integrates Endpoint Detection and Response (EDR), Security Information and Event Management (SIEM), and Security Orchestration, Automation, and Response (SOAR) concepts into a unified architecture focused on high-fidelity detection and operational safety.
 
-At its core, SentinelLite uses an eBPF-based endpoint agent to collect kernel-level telemetry with minimal performance overhead. The agent provides syscall-level visibility including process execution (execve), file access and modification (open, write operations), and network connections (connect). This enables deep behavioral monitoring such as process lineage tracking (parent–child relationships), detection of abnormal file write or rename bursts indicative of ransomware activity, and correlation between running processes and active network sockets. The result is high-fidelity telemetry comparable to enterprise EDR solutions.
+At its core, Kernox uses an eBPF-based endpoint agent to collect kernel-level telemetry with minimal performance overhead. The agent provides syscall-level visibility including process execution (execve), file access and modification (open, write operations), and network connections (connect). This enables deep behavioral monitoring such as process lineage tracking (parent–child relationships), detection of abnormal file write or rename bursts indicative of ransomware activity, and correlation between running processes and active network sockets. The result is high-fidelity telemetry comparable to enterprise EDR solutions.
 
-Instead of generating isolated alerts, SentinelLite constructs an Attack Graph representing attacker activity as a Directed Acyclic Graph (DAG). Security events such as brute-force attempts, successful authentication, privilege escalation, lateral movement, and data exfiltration are automatically correlated into a complete kill chain. This graph-based approach allows the system to identify multi-stage attacks, understand attack progression, and calculate both confidence and blast-radius scores before initiating response actions.
+Instead of generating isolated alerts, Kernox constructs an Attack Graph representing attacker activity as a Directed Acyclic Graph (DAG). Security events such as brute-force attempts, successful authentication, privilege escalation, lateral movement, and data exfiltration are automatically correlated into a complete kill chain. This graph-based approach allows the system to identify multi-stage attacks, understand attack progression, and calculate both confidence and blast-radius scores before initiating response actions.
 
 The platform implements a risk-aware autonomous response engine that follows a human-in-the-loop decision model. Response actions are executed based on calculated confidence thresholds:
 
@@ -15,15 +15,15 @@ Medium confidence events generate partial containment with SOC alerts.
 Low confidence events are logged and escalated for analyst review only.
 This approach balances automation speed with operational safety, preventing false-positive disruption in production environments.
 
-A key differentiator of SentinelLite is its transaction-based response and rollback mechanism. Every automated action is recorded as a reversible transaction, allowing security operators to restore network access, unblock IP addresses, or recover affected services if a response decision needs to be reverted. This introduces reliability and accountability typically absent in academic security projects.
+A key differentiator of Kernox is its transaction-based response and rollback mechanism. Every automated action is recorded as a reversible transaction, allowing security operators to restore network access, unblock IP addresses, or recover affected services if a response decision needs to be reverted. This introduces reliability and accountability typically absent in academic security projects.
 
 The system also includes a custom rule engine with a detection DSL, enabling security teams to define behavioral rules similar to Sigma-style detections. Analysts can create conditions based on process attributes, command-line arguments, or behavioral sequences, allowing extensible and organization-specific threat detection without modifying core logic.
 
-To demonstrate detection capability and enable realistic evaluation, SentinelLite incorporates a Red Team Simulation Pack consisting of controlled attack scenarios such as SSH brute-force attempts, privilege escalation via sudo misuse, ransomware behavior simulation using safe file encryption patterns, and command-and-control (C2) beaconing simulations. These scenarios allow live demonstrations of attack detection, graph correlation, and automated response workflows.
+To demonstrate detection capability and enable realistic evaluation, Kernox incorporates a Red Team Simulation Pack consisting of controlled attack scenarios such as SSH brute-force attempts, privilege escalation via sudo misuse, ransomware behavior simulation using safe file encryption patterns, and command-and-control (C2) beaconing simulations. These scenarios allow live demonstrations of attack detection, graph correlation, and automated response workflows.
 
-Additionally, SentinelLite supports multi-host correlation, enabling SOC-level visibility across multiple endpoints. The platform detects anomalous behavior such as the same user authenticating across multiple machines in short intervals, propagation patterns indicating lateral movement, and risk inheritance where compromised hosts influence the risk scoring of connected systems.
+Additionally, Kernox supports multi-host correlation, enabling SOC-level visibility across multiple endpoints. The platform detects anomalous behavior such as the same user authenticating across multiple machines in short intervals, propagation patterns indicating lateral movement, and risk inheritance where compromised hosts influence the risk scoring of connected systems.
 
-Overall, SentinelLite transforms raw endpoint telemetry into contextual attack intelligence by combining kernel-level monitoring, graph-based attack modeling, adaptive rule evaluation, and safe automation. The system represents a complete end-to-end security pipeline and demonstrates how modern EDR and SOC automation platforms operate in enterprise environments.
+Overall, Kernox transforms raw endpoint telemetry into contextual attack intelligence by combining kernel-level monitoring, graph-based attack modeling, adaptive rule evaluation, and safe automation. The system represents a complete end-to-end security pipeline and demonstrates how modern EDR and SOC automation platforms operate in enterprise environments.
 
 
 the first feature to build is :
@@ -189,9 +189,9 @@ quarantine file
 This connects eBPF agent to SOAR response engine.
 
 
-✅ SentinelLite Project — Team Setup & Requirements Document
+✅ Kernox Project — Team Setup & Requirements Document
 Project Overview
-SentinelLite is a Linux-based Endpoint Detection and Response (EDR) system that monitors endpoint activities using eBPF, sends security events to a centralized backend, correlates events into attack chains, and performs automated incident response using SIEM and SOAR concepts.
+Kernox is a Linux-based Endpoint Detection and Response (EDR) system that monitors endpoint activities using eBPF, sends security events to a centralized backend, correlates events into attack chains, and performs automated incident response using SIEM and SOAR concepts.
 
 The project requires a multi-machine setup where multiple endpoints send telemetry to a centralized SOC server.
 
@@ -467,7 +467,7 @@ Easy rollback if something breaks
 
 ✅ One-line Team Rule
 Code in feature branch → merge to develop → release to main.
-✅ SentinelLite — Complete Technology Stack
+✅ Kernox — Complete Technology Stack
 🧠 1. Endpoint Layer (eBPF Agent)
 This runs on all endpoint machines.
 

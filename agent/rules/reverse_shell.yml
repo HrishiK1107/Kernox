@@ -1,0 +1,12 @@
+name: Reverse Shell Detection
+description: Detects common reverse shell patterns (bash -i, nc -e, python -c)
+severity: critical
+conditions:
+  - field: process.name
+    operator: in
+    value: [bash, sh, nc, ncat, python3, python, perl, ruby]
+  - field: event_type
+    operator: equals
+    value: network_connect
+match: all
+action: alert

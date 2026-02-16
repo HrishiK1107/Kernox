@@ -46,3 +46,7 @@ htmlcov/
 
 # Mypy cache (if added later)
 .mypy_cache/
+
+# Agent specific
+discription.txt
+*.pid

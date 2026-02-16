@@ -1,0 +1,12 @@
+name: Sensitive File Access
+description: Detects access to sensitive system files (shadow, sudoers, ssh keys)
+severity: high
+conditions:
+  - field: event_type
+    operator: equals
+    value: file_open
+  - field: file.path
+    operator: regex
+    value: "(shadow|sudoers|authorized_keys|id_rsa|\.ssh/)"
+match: all
+action: alert

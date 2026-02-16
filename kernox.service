@@ -1,0 +1,28 @@
+[Unit]
+Description=Kernox eBPF Endpoint Agent
+Documentation=https://github.com/aaryaman005/Kernox
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m agent.main
+WorkingDirectory=/opt/kernox
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kernox
+LimitMEMLOCK=infinity
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_ADMIN CAP_KILL
+AmbientCapabilities=CAP_SYS_ADMIN CAP_NET_ADMIN CAP_KILL
+
+# Security hardening
+NoNewPrivileges=no
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/run /var/kernox
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
