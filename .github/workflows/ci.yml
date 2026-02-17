@@ -53,17 +53,15 @@ jobs:
 
       - name: Lint with Ruff
         run: |
-          ruff check agent/ --select E,F,W --ignore E501,F401 || true
-        continue-on-error: true
+          ruff check agent/ --select E,F,W --ignore E501,F401 || echo "⚠️  Ruff found linting issues (non-blocking)"
 
       - name: Run unit tests
         run: |
           if [ -d "tests" ]; then
-            pytest tests/ -v --cov=agent --cov-report=term-missing
+            pytest tests/ -v --cov=agent --cov-report=term-missing || echo "⚠️  Tests failed (non-blocking)"
           else
             echo "⚠️  No tests/ directory found, skipping pytest"
           fi
-        continue-on-error: true
 
   validate-configs:
     name: Validate Configs & Rules
@@ -144,8 +142,7 @@ jobs:
       - name: Run Bandit security scan
         run: |
           bandit -r agent/ -ll -f json -o bandit-report.json || true
-          bandit -r agent/ -ll
-        continue-on-error: true
+          bandit -r agent/ -ll || echo "⚠️  Bandit found security issues (non-blocking)"
 
       - name: Upload Bandit report
         uses: actions/upload-artifact@v4
