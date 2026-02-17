@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Kernox — eBPF Endpoint Agent
+<<<<<<< Updated upstream
 
 Main entry point. Ties together all eBPF monitors, process lineage,
 event emitter, heartbeat, response hook, and detection engine.
@@ -10,12 +11,15 @@ Usage:
     sudo python3 -m agent
 
 Requires root privileges for eBPF operations.
+=======
+>>>>>>> Stashed changes
 """
 
 import os
 import signal
 import sys
 
+<<<<<<< Updated upstream
 # ── Ensure we can import the agent package ──────────────────────
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
@@ -24,6 +28,9 @@ if PROJECT_ROOT not in sys.path:
 from agent.logging_config import logger
 from agent.config import ENDPOINT_ID, HOSTNAME, PROCESS_TREE_MAX_SIZE, PID_FILE
 from agent.pidfile import acquire_pidfile, release_pidfile
+=======
+from agent.config import ENDPOINT_ID, HOSTNAME, PROCESS_TREE_MAX_SIZE
+>>>>>>> Stashed changes
 from agent.ebpf.process_monitor import ProcessMonitor
 from agent.ebpf.file_monitor import FileMonitor
 from agent.ebpf.net_monitor import NetworkMonitor
@@ -50,7 +57,6 @@ BANNER = r"""
 
 
 def main() -> None:
-    # ── Check privileges ─────────────────────────────────────
     if os.geteuid() != 0:
         logger.error("This agent requires root privileges.")
         logger.error("Run with: sudo python3 -m agent.main")
@@ -64,7 +70,6 @@ def main() -> None:
     # ── Acquire PID file (single instance) ───────────────────
     acquire_pidfile(PID_FILE)
 
-    # ── Initialize components ────────────────────────────────
     tree = ProcessTree(max_size=PROCESS_TREE_MAX_SIZE)
     emitter = EventEmitter()
     heartbeat = Heartbeat(event_emitter=emitter, process_tree=tree)
@@ -88,9 +93,12 @@ def main() -> None:
     monitors = [file_monitor, net_monitor, priv_monitor, auth_monitor,
                 dns_monitor, log_tamper]
 
+<<<<<<< Updated upstream
     # ── Graceful shutdown ────────────────────────────────────
     _shutting_down = False
 
+=======
+>>>>>>> Stashed changes
     def shutdown(signum, frame):
         nonlocal _shutting_down
         if _shutting_down:
@@ -113,7 +121,10 @@ def main() -> None:
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
+<<<<<<< Updated upstream
     # ── Start all monitors ───────────────────────────────────
+=======
+>>>>>>> Stashed changes
     heartbeat.start()
     logger.info("Heartbeat started.")
 
@@ -133,6 +144,7 @@ def main() -> None:
     logger.info("All monitors active. Watching endpoint...")
 
     try:
+<<<<<<< Updated upstream
         proc_monitor._load_bpf()
         proc_monitor._attach_callbacks()
         proc_monitor._running = True
@@ -143,6 +155,9 @@ def main() -> None:
                 m.poll()
     except KeyboardInterrupt:
         pass
+=======
+        monitor.start()
+>>>>>>> Stashed changes
     except Exception as e:
         logger.error("Monitor loop failed: %s", e)
     finally:
