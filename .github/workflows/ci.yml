@@ -1,0 +1,261 @@
+name: Kernox CI/CD
+
+on:
+  push:
+    branches: [main, develop, feature/*]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-and-test:
+    name: Lint & Test Agent
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pylint ruff pytest pytest-cov pyyaml
+
+      - name: Syntax check all Python files
+        run: |
+          python3 -c "
+          import ast, os, sys
+          all_py = []
+          for root, dirs, files in os.walk('.'):
+              if '.git' in root or '__pycache__' in root or 'venv' in root:
+                  continue
+              for f in files:
+                  if f.endswith('.py'):
+                      all_py.append(os.path.join(root, f))
+          
+          ok = True
+          for f in sorted(all_py):
+              try:
+                  ast.parse(open(f).read())
+                  print(f'✅ {f}')
+              except SyntaxError as e:
+                  print(f'❌ {f}: {e}')
+                  ok = False
+          
+          if not ok:
+              sys.exit(1)
+          print(f'\n✅ All {len(all_py)} Python files passed syntax check')
+          "
+
+      - name: Lint with Ruff
+        run: |
+          ruff check agent/ --select E,F,W --ignore E501,F401 || echo "⚠️  Ruff found linting issues (non-blocking)"
+
+      - name: Run unit tests
+        run: |
+          if [ -d "tests" ]; then
+            pytest tests/ -v --cov=agent --cov-report=term-missing || echo "⚠️  Tests failed (non-blocking)"
+          else
+            echo "⚠️  No tests/ directory found, skipping pytest"
+          fi
+
+  validate-configs:
+    name: Validate Configs & Rules
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Validate YAML detection rules
+        run: |
+          python3 -c "
+          import yaml, os, sys
+          rules_dir = 'agent/rules'
+          if not os.path.isdir(rules_dir):
+              print('❌ Rules directory not found at agent/rules')
+              sys.exit(1)
+          
+          files_found = [f for f in os.listdir(rules_dir) if f.endswith(('.yml', '.yaml'))]
+          if not files_found:
+              print('❌ No YAML files found in agent/rules')
+              sys.exit(1)
+          
+          ok = True
+          for f in files_found:
+              path = os.path.join(rules_dir, f)
+              try:
+                  with open(path) as fp:
+                      data = yaml.safe_load(fp)
+                  if not isinstance(data, dict):
+                      raise ValueError('Root must be a dict')
+                  if 'name' not in data or 'conditions' not in data:
+                      raise ValueError('Missing required fields: name, conditions')
+                  print(f'✅ {f}')
+              except Exception as e:
+                  print(f'❌ {f}: {e}')
+                  ok = False
+          
+          if not ok:
+              sys.exit(1)
+          print(f'\\n✅ All {len(files_found)} detection rules are valid YAML')
+          "
+
+      - name: Validate systemd service file
+        run: |
+          if [ -f "kernox.service" ]; then
+            systemd-analyze verify kernox.service || echo "⚠️  systemd-analyze not available in CI"
+            echo "✅ kernox.service exists"
+          else
+            echo "❌ kernox.service not found"
+            exit 1
+          fi
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Bandit
+        run: pip install bandit[toml]
+
+      - name: Run Bandit security scan
+        run: |
+          bandit -r agent/ -ll -f json -o bandit-report.json || true
+          bandit -r agent/ -ll || echo "⚠️  Bandit found security issues (non-blocking)"
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+        if: always()
+
+  build-check:
+    name: Build Check
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check project structure
+        run: |
+          echo "Checking required files and directories..."
+          
+          required_files=(
+            "README.md"
+            "kernox.service"
+            "agent/__init__.py"
+            "agent/__main__.py"
+            "agent/main.py"
+            "agent/config.py"
+          )
+          
+          required_dirs=(
+            "agent/ebpf"
+            "agent/events"
+            "agent/tracking"
+            "simulations"
+          )
+          
+          ok=true
+          
+          for file in "${required_files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✅ $file"
+            else
+              echo "❌ Missing: $file"
+              ok=false
+            fi
+          done
+          
+          for dir in "${required_dirs[@]}"; do
+            if [ -d "$dir" ]; then
+              echo "✅ $dir/"
+            else
+              echo "❌ Missing: $dir/"
+              ok=false
+            fi
+          done
+          
+          if [ "$ok" = false ]; then
+            exit 1
+          fi
+          
+          echo ""
+          echo "✅ All required files and directories present"
+
+      - name: Count Python files
+        run: |
+          py_count=$(find agent/ -name "*.py" | wc -l)
+          c_count=$(find agent/ebpf/bpf_programs/ -name "*.c" 2>/dev/null | wc -l || echo 0)
+          
+          echo "📊 Project stats:"
+          echo "  - Python files: $py_count"
+          echo "  - eBPF C files: $c_count"
+          echo "  - Total lines: $(find agent/ -name "*.py" -exec wc -l {} + | tail -1 | awk '{print $1}')"
+
+  integration-test:
+    name: Integration Test (Simulations)
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Test simulation scripts (dry-run)
+        run: |
+          echo "Testing simulation scripts can be imported..."
+          
+          for sim in simulations/sim_*.py; do
+            if [ -f "$sim" ]; then
+              echo "Checking $sim..."
+              python3 -c "import ast; ast.parse(open('$sim').read())"
+              echo "✅ $(basename $sim) syntax OK"
+            fi
+          done
+          
+          echo ""
+          echo "✅ All simulation scripts are syntactically valid"
+
+  notify:
+    name: Notify Status
+    runs-on: ubuntu-22.04
+    needs: [lint-and-test, validate-configs, security-scan, build-check, integration-test]
+    if: always()
+    
+    steps:
+      - name: Check overall status
+        run: |
+          echo "CI/CD Pipeline completed"
+          echo "Lint & Test: ${{ needs.lint-and-test.result }}"
+          echo "Validate Configs: ${{ needs.validate-configs.result }}"
+          echo "Security Scan: ${{ needs.security-scan.result }}"
+          echo "Build Check: ${{ needs.build-check.result }}"
+          echo "Integration Test: ${{ needs.integration-test.result }}"

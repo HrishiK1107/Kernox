@@ -263,7 +263,7 @@ class ResponseHook:
                 "action": action,
                 "details": details,
                 "reason": reason,
-                "hostname": HOSTNAME,
+                "hostname": HOSTNAME,   
                 "endpoint_id": ENDPOINT_ID,
             })
 

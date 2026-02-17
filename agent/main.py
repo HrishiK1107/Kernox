@@ -33,6 +33,7 @@ from agent.ebpf.dns_monitor import DnsMonitor
 from agent.ebpf.log_tamper_monitor import LogTamperMonitor
 from agent.events.event_emitter import EventEmitter
 from agent.tracking.process_tree import ProcessTree
+from agent.tracking.container_info import enrich_with_container_info
 from agent.health.heartbeat import Heartbeat
 from agent.response.response_hook import ResponseHook
 from agent.detection.rule_engine import RuleEngine
@@ -43,14 +44,13 @@ BANNER = r"""
  | |/ / ___  _ __  _ __   ___ __  __
  | ' / / _ \| '__|| '_ \ / _ \\ \/ /
  | . \|  __/| |   | | | | (_) |>  < 
- |_|\_\\___||_|   |_| |_|\___//_/\_\
+ |_|\_\___||_|   |_| |_|\___//_/\_\
 
   eBPF Endpoint Agent v1.0
 """
 
 
 def main() -> None:
-    # ── Check privileges ─────────────────────────────────────
     if os.geteuid() != 0:
         logger.error("This agent requires root privileges.")
         logger.error("Run with: sudo python3 -m agent.main")
@@ -64,7 +64,6 @@ def main() -> None:
     # ── Acquire PID file (single instance) ───────────────────
     acquire_pidfile(PID_FILE)
 
-    # ── Initialize components ────────────────────────────────
     tree = ProcessTree(max_size=PROCESS_TREE_MAX_SIZE)
     emitter = EventEmitter()
     heartbeat = Heartbeat(event_emitter=emitter, process_tree=tree)

@@ -7,6 +7,6 @@ conditions:
     value: file_open
   - field: file.path
     operator: regex
-    value: "(shadow|sudoers|authorized_keys|id_rsa|\.ssh/)"
+    value: '(shadow|sudoers|authorized_keys|id_rsa|\.ssh/)'
 match: all
 action: alert
