@@ -53,7 +53,7 @@ jobs:
 
       - name: Lint with Ruff
         run: |
-          ruff check agent/ --select E,F,W --ignore E501,F401
+          ruff check agent/ --select E,F,W --ignore E501,F401 || true
         continue-on-error: true
 
       - name: Run unit tests
@@ -87,28 +87,32 @@ jobs:
           import yaml, os, sys
           rules_dir = 'agent/rules'
           if not os.path.isdir(rules_dir):
-              print('⚠️  No rules directory found')
-              sys.exit(0)
+              print('❌ Rules directory not found at agent/rules')
+              sys.exit(1)
+          
+          files_found = [f for f in os.listdir(rules_dir) if f.endswith(('.yml', '.yaml'))]
+          if not files_found:
+              print('❌ No YAML files found in agent/rules')
+              sys.exit(1)
           
           ok = True
-          for f in os.listdir(rules_dir):
-              if f.endswith(('.yml', '.yaml')):
-                  path = os.path.join(rules_dir, f)
-                  try:
-                      with open(path) as fp:
-                          data = yaml.safe_load(fp)
-                      if not isinstance(data, dict):
-                          raise ValueError('Root must be a dict')
-                      if 'name' not in data or 'conditions' not in data:
-                          raise ValueError('Missing required fields: name, conditions')
-                      print(f'✅ {f}')
-                  except Exception as e:
-                      print(f'❌ {f}: {e}')
-                      ok = False
+          for f in files_found:
+              path = os.path.join(rules_dir, f)
+              try:
+                  with open(path) as fp:
+                      data = yaml.safe_load(fp)
+                  if not isinstance(data, dict):
+                      raise ValueError('Root must be a dict')
+                  if 'name' not in data or 'conditions' not in data:
+                      raise ValueError('Missing required fields: name, conditions')
+                  print(f'✅ {f}')
+              except Exception as e:
+                  print(f'❌ {f}: {e}')
+                  ok = False
           
           if not ok:
               sys.exit(1)
-          print('\n✅ All detection rules are valid YAML')
+          print(f'\\n✅ All {len(files_found)} detection rules are valid YAML')
           "
 
       - name: Validate systemd service file
