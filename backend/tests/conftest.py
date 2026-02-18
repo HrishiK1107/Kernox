@@ -1,9 +1,33 @@
 import pytest
-from app.services.event_guard import event_guard
-from app.services.rate_limiter import rate_limiter
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+from app.db.base import Base
 
 
-@pytest.fixture(autouse=True)
-def reset_state():
-    event_guard.reset()
-    rate_limiter.reset()
+@pytest.fixture
+def db_session():
+    """
+    Creates isolated in-memory DB session per test.
+    """
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    TestingSessionLocal = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        autocommit=False,
+    )
+
+    Base.metadata.create_all(bind=engine)
+
+    db = TestingSessionLocal()
+
+    try:
+        yield db
+    finally:
+        db.close()
