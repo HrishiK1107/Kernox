@@ -4,6 +4,7 @@ from sqlalchemy import and_
 from app.models.event import Event
 from app.models.alert import Alert
 from app.services.rule_registry import RULES, DetectionResult
+from app.services.correlation_engine import CorrelationEngine
 
 
 class DetectionEngine:
@@ -69,4 +70,9 @@ class DetectionEngine:
             is_escalated=False,
         )
 
+        # Add alert inside current transaction
         db.add(alert)
+        db.flush()  # ensure alert.id is generated before correlation
+
+        # 🔥 Phase 5 — Correlate alert into campaign
+        CorrelationEngine.run(db, alert)
