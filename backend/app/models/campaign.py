@@ -81,11 +81,6 @@ class Campaign(Base):
     )
 
 
-# Indexes
-Index("idx_campaigns_endpoint_id", Campaign.endpoint_id)
-Index("idx_campaigns_created_at", Campaign.created_at)
-
-
 # ─────────────────────────────────────────────
 # CampaignAlert Link Model
 # ─────────────────────────────────────────────
@@ -117,5 +112,6 @@ class CampaignAlert(Base):
 
 
 # Indexes
-Index("idx_campaign_alerts_campaign_id", CampaignAlert.campaign_id)
-Index("idx_campaign_alerts_alert_id", CampaignAlert.alert_id)
+Index("idx_campaigns_endpoint_id", Campaign.endpoint_id)
+Index("idx_campaigns_created_at", Campaign.created_at)
+Index("idx_campaigns_updated_at", Campaign.updated_at)

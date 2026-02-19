@@ -1,17 +1,17 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-
-from app.db.session import get_db
-from app.models.alert import Alert
-from sqlalchemy import case
-
+from sqlalchemy import func, case
 from datetime import datetime, timezone, timedelta
+
 from app.models.campaign import Campaign
 from app.models.endpoint import Endpoint
+from app.db.session import get_db
+from app.models.alert import Alert
 
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+MAX_PAGE_SIZE = 100
 
 
 # ─────────────────────────────────────────────
@@ -19,11 +19,6 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 # ─────────────────────────────────────────────
 @router.get("/severity-distribution")
 def severity_distribution(db: Session = Depends(get_db)):
-    """
-    Returns aggregated alert counts grouped by severity and status.
-    SQL-level aggregation only.
-    """
-
     results = (
         db.query(
             Alert.severity.label("severity"),
@@ -48,36 +43,47 @@ def severity_distribution(db: Session = Depends(get_db)):
 # GET /analytics/alerts-per-endpoint
 # ─────────────────────────────────────────────
 @router.get("/alerts-per-endpoint")
-def alerts_per_endpoint(db: Session = Depends(get_db)):
-    """
-    Returns aggregated alert metrics per endpoint.
-    SQL aggregation only.
-    """
-
-    results = (
-        db.query(
-            Alert.endpoint_id.label("endpoint_id"),
-            func.count(Alert.id).label("total_alerts"),
-            func.count(case((Alert.status == "open", 1))).label("open_alerts"),
-            func.count(case((Alert.status == "resolved", 1))).label("resolved_alerts"),
-            func.avg(Alert.risk_score).label("avg_risk_score"),
+def alerts_per_endpoint(
+    db: Session = Depends(get_db),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1),
+):
+    if page_size > MAX_PAGE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"page_size cannot exceed {MAX_PAGE_SIZE}",
         )
-        .group_by(Alert.endpoint_id)
-        .all()
-    )
 
-    return [
-        {
-            "endpoint_id": row.endpoint_id,
-            "total_alerts": row.total_alerts,
-            "open_alerts": row.open_alerts,
-            "resolved_alerts": row.resolved_alerts,
-            "avg_risk_score": (
-                float(row.avg_risk_score) if row.avg_risk_score is not None else 0.0
-            ),
-        }
-        for row in results
-    ]
+    base_query = db.query(
+        Alert.endpoint_id.label("endpoint_id"),
+        func.count(Alert.id).label("total_alerts"),
+        func.count(case((Alert.status == "open", 1))).label("open_alerts"),
+        func.count(case((Alert.status == "resolved", 1))).label("resolved_alerts"),
+        func.avg(Alert.risk_score).label("avg_risk_score"),
+    ).group_by(Alert.endpoint_id)
+
+    total = base_query.count()
+
+    offset = (page - 1) * page_size
+    results = base_query.offset(offset).limit(page_size).all()
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "results": [
+            {
+                "endpoint_id": row.endpoint_id,
+                "total_alerts": row.total_alerts,
+                "open_alerts": row.open_alerts,
+                "resolved_alerts": row.resolved_alerts,
+                "avg_risk_score": (
+                    float(row.avg_risk_score) if row.avg_risk_score is not None else 0.0
+                ),
+            }
+            for row in results
+        ],
+    }
 
 
 # ─────────────────────────────────────────────
@@ -89,13 +95,6 @@ def top_rules(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1),
 ):
-    """
-    Returns top detection rules ranked by alert volume.
-    Fully aggregated in SQL.
-    """
-
-    MAX_PAGE_SIZE = 100
-
     if page_size > MAX_PAGE_SIZE:
         raise HTTPException(
             status_code=400,
@@ -116,7 +115,6 @@ def top_rules(
     total = base_query.count()
 
     offset = (page - 1) * page_size
-
     results = base_query.offset(offset).limit(page_size).all()
 
     return {
@@ -146,13 +144,6 @@ def endpoint_risk(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1),
 ):
-    """
-    Computes rolling 7-day deterministic risk index per endpoint.
-    Fully aggregated in SQL.
-    """
-
-    MAX_PAGE_SIZE = 100
-
     if page_size > MAX_PAGE_SIZE:
         raise HTTPException(
             status_code=400,
@@ -161,9 +152,6 @@ def endpoint_risk(
 
     window_start = datetime.now(timezone.utc) - timedelta(days=7)
 
-    # ─────────────────────────
-    # Alerts Subquery
-    # ─────────────────────────
     alerts_subq = (
         db.query(
             Alert.endpoint_id.label("endpoint_id"),
@@ -176,9 +164,6 @@ def endpoint_risk(
         .subquery()
     )
 
-    # ─────────────────────────
-    # Campaigns Subquery
-    # ─────────────────────────
     campaigns_subq = (
         db.query(
             Campaign.endpoint_id.label("endpoint_id"),
@@ -190,9 +175,6 @@ def endpoint_risk(
         .subquery()
     )
 
-    # ─────────────────────────
-    # Main Aggregation
-    # ─────────────────────────
     query = (
         db.query(
             Endpoint.id.label("endpoint_id"),
@@ -212,14 +194,8 @@ def endpoint_risk(
                 ),
             ).label("last_activity"),
         )
-        .outerjoin(
-            alerts_subq,
-            Endpoint.id == alerts_subq.c.endpoint_id,
-        )
-        .outerjoin(
-            campaigns_subq,
-            Endpoint.id == campaigns_subq.c.endpoint_id,
-        )
+        .outerjoin(alerts_subq, Endpoint.id == alerts_subq.c.endpoint_id)
+        .outerjoin(campaigns_subq, Endpoint.id == campaigns_subq.c.endpoint_id)
     )
 
     total = query.count()
@@ -267,11 +243,6 @@ def trends(
     end_date: datetime = Query(...),
     bucket: str = Query(default="daily"),
 ):
-    """
-    Returns alert + campaign trends grouped by time bucket.
-    SQL aggregation only.
-    """
-
     if bucket not in {"hourly", "daily"}:
         raise HTTPException(
             status_code=400,
@@ -286,9 +257,6 @@ def trends(
 
     dialect = db.bind.dialect.name
 
-    # ─────────────────────────
-    # Bucket Expression
-    # ─────────────────────────
     if dialect == "postgresql":
         if bucket == "hourly":
             bucket_expr_alert = func.date_trunc("hour", Alert.created_at)
@@ -297,7 +265,6 @@ def trends(
             bucket_expr_alert = func.date_trunc("day", Alert.created_at)
             bucket_expr_campaign = func.date_trunc("day", Campaign.updated_at)
     else:
-        # SQLite fallback
         if bucket == "hourly":
             bucket_expr_alert = func.strftime("%Y-%m-%d %H:00:00", Alert.created_at)
             bucket_expr_campaign = func.strftime(
@@ -309,9 +276,6 @@ def trends(
                 "%Y-%m-%d 00:00:00", Campaign.updated_at
             )
 
-    # ─────────────────────────
-    # Alert Aggregation
-    # ─────────────────────────
     alerts_subq = (
         db.query(
             bucket_expr_alert.label("bucket"),
@@ -324,9 +288,6 @@ def trends(
         .subquery()
     )
 
-    # ─────────────────────────
-    # Campaign Aggregation
-    # ─────────────────────────
     campaigns_subq = (
         db.query(
             bucket_expr_campaign.label("bucket"),
@@ -338,9 +299,6 @@ def trends(
         .subquery()
     )
 
-    # ─────────────────────────
-    # Join Buckets
-    # ─────────────────────────
     query = (
         db.query(
             alerts_subq.c.bucket,
