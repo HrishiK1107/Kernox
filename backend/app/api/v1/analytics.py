@@ -255,3 +255,114 @@ def endpoint_risk(
         "page_size": page_size,
         "results": response,
     }
+
+
+# ─────────────────────────────────────────────
+# GET /analytics/trends
+# ─────────────────────────────────────────────
+@router.get("/trends")
+def trends(
+    db: Session = Depends(get_db),
+    start_date: datetime = Query(...),
+    end_date: datetime = Query(...),
+    bucket: str = Query(default="daily"),
+):
+    """
+    Returns alert + campaign trends grouped by time bucket.
+    SQL aggregation only.
+    """
+
+    if bucket not in {"hourly", "daily"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid bucket. Use 'hourly' or 'daily'.",
+        )
+
+    if end_date <= start_date:
+        raise HTTPException(
+            status_code=400,
+            detail="end_date must be greater than start_date",
+        )
+
+    dialect = db.bind.dialect.name
+
+    # ─────────────────────────
+    # Bucket Expression
+    # ─────────────────────────
+    if dialect == "postgresql":
+        if bucket == "hourly":
+            bucket_expr_alert = func.date_trunc("hour", Alert.created_at)
+            bucket_expr_campaign = func.date_trunc("hour", Campaign.updated_at)
+        else:
+            bucket_expr_alert = func.date_trunc("day", Alert.created_at)
+            bucket_expr_campaign = func.date_trunc("day", Campaign.updated_at)
+    else:
+        # SQLite fallback
+        if bucket == "hourly":
+            bucket_expr_alert = func.strftime("%Y-%m-%d %H:00:00", Alert.created_at)
+            bucket_expr_campaign = func.strftime(
+                "%Y-%m-%d %H:00:00", Campaign.updated_at
+            )
+        else:
+            bucket_expr_alert = func.strftime("%Y-%m-%d 00:00:00", Alert.created_at)
+            bucket_expr_campaign = func.strftime(
+                "%Y-%m-%d 00:00:00", Campaign.updated_at
+            )
+
+    # ─────────────────────────
+    # Alert Aggregation
+    # ─────────────────────────
+    alerts_subq = (
+        db.query(
+            bucket_expr_alert.label("bucket"),
+            func.count(Alert.id).label("alert_count"),
+            func.avg(Alert.risk_score).label("avg_risk"),
+        )
+        .filter(Alert.created_at >= start_date)
+        .filter(Alert.created_at <= end_date)
+        .group_by("bucket")
+        .subquery()
+    )
+
+    # ─────────────────────────
+    # Campaign Aggregation
+    # ─────────────────────────
+    campaigns_subq = (
+        db.query(
+            bucket_expr_campaign.label("bucket"),
+            func.count(Campaign.id).label("campaign_count"),
+        )
+        .filter(Campaign.updated_at >= start_date)
+        .filter(Campaign.updated_at <= end_date)
+        .group_by("bucket")
+        .subquery()
+    )
+
+    # ─────────────────────────
+    # Join Buckets
+    # ─────────────────────────
+    query = (
+        db.query(
+            alerts_subq.c.bucket,
+            func.coalesce(alerts_subq.c.alert_count, 0),
+            func.coalesce(campaigns_subq.c.campaign_count, 0),
+            func.coalesce(alerts_subq.c.avg_risk, 0.0),
+        )
+        .outerjoin(
+            campaigns_subq,
+            alerts_subq.c.bucket == campaigns_subq.c.bucket,
+        )
+        .order_by(alerts_subq.c.bucket.asc())
+    )
+
+    results = query.all()
+
+    return [
+        {
+            "bucket": row[0],
+            "alert_count": row[1],
+            "campaign_count": row[2],
+            "avg_risk": float(row[3]) if row[3] is not None else 0.0,
+        }
+        for row in results
+    ]
