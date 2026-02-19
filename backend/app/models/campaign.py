@@ -81,11 +81,6 @@ class Campaign(Base):
     )
 
 
-# Indexes
-Index("idx_campaigns_endpoint_id", Campaign.endpoint_id)
-Index("idx_campaigns_created_at", Campaign.created_at)
-
-
 # ─────────────────────────────────────────────
 # CampaignAlert Link Model
 # ─────────────────────────────────────────────
