@@ -4,6 +4,7 @@ from sqlalchemy import desc
 
 from app.models.alert import Alert
 from app.models.campaign import Campaign, CampaignAlert
+from app.services.risk_engine import RiskEngine
 
 
 CORRELATION_WINDOW_MINUTES = 15
@@ -40,6 +41,8 @@ class CorrelationEngine:
 
         CorrelationEngine._create_campaign(db, new_alert)
 
+    # ─────────────────────────────────────────────
+
     @staticmethod
     def _create_campaign(db: Session, alert: Alert) -> None:
         campaign = Campaign(
@@ -60,13 +63,18 @@ class CorrelationEngine:
         )
 
         db.add(link)
-
-        db.flush()  # 🔥 Ensure link is visible before scoring
+        db.flush()
 
         CorrelationEngine._recalculate_score(db, campaign)
 
+    # ─────────────────────────────────────────────
+
     @staticmethod
-    def _extend_campaign(db: Session, campaign: Campaign, alert: Alert) -> None:
+    def _extend_campaign(
+        db: Session,
+        campaign: Campaign,
+        alert: Alert,
+    ) -> None:
         next_position = campaign.chain_length + 1
 
         link = CampaignAlert(
@@ -80,9 +88,11 @@ class CorrelationEngine:
         campaign.chain_length = next_position
         campaign.last_alert_id = alert.id
 
-        db.flush()  # 🔥 Ensure new link is visible
+        db.flush()
 
         CorrelationEngine._recalculate_score(db, campaign)
+
+    # ─────────────────────────────────────────────
 
     @staticmethod
     def _recalculate_score(db: Session, campaign: Campaign) -> None:
@@ -100,18 +110,7 @@ class CorrelationEngine:
 
         alerts = db.query(Alert).filter(Alert.id.in_(alert_ids)).all()
 
-        base_score = sum(alert.risk_score for alert in alerts)
+        score_data = RiskEngine.compute_campaign_score(alerts)
 
-        bonus = 0
-
-        if len(alerts) >= 3:
-            bonus += 10
-
-        unique_rules = {alert.rule_name for alert in alerts}
-        if len(unique_rules) >= 2:
-            bonus += 15
-
-        if any(alert.severity == "critical" for alert in alerts):
-            bonus += 20
-
-        campaign.campaign_risk_score = min(base_score + bonus, 100)
+        campaign.campaign_risk_score = score_data["final_score"]
+        campaign.score_breakdown = score_data

@@ -50,3 +50,4 @@ htmlcov/
 # Agent specific
 discription.txt
 *.pid
+*.zip

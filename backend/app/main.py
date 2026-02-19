@@ -12,6 +12,9 @@ from app.core.logging_config import setup_logging
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.api.routes import events_read
 from app.api.v1.events import router as events_router
+from app.api.v1.alerts import router as alerts_router
+from app.api.v1.campaigns import router as campaigns_router
+
 
 configure_logging()
 setup_logging()
@@ -35,3 +38,17 @@ app.include_router(
 )
 
 app.include_router(endpoints.router, prefix=settings.API_V1_PREFIX, tags=["endpoints"])
+
+app.include_router(
+    alerts_router,
+    prefix=settings.API_V1_PREFIX,
+    tags=["alerts"],
+)
+
+app.include_router(alerts_router, prefix=settings.API_V1_PREFIX, tags=["alerts"])
+
+app.include_router(
+    campaigns_router,
+    prefix=settings.API_V1_PREFIX,
+    tags=["campaigns"],
+)
