@@ -14,6 +14,7 @@ from app.api.routes import events_read
 from app.api.v1.events import router as events_router
 from app.api.v1.alerts import router as alerts_router
 from app.api.v1.campaigns import router as campaigns_router
+from app.api.v1.analytics import router as analytics_router
 
 
 configure_logging()
@@ -52,3 +53,5 @@ app.include_router(
     prefix=settings.API_V1_PREFIX,
     tags=["campaigns"],
 )
+
+app.include_router(analytics_router, prefix="/api/v1")

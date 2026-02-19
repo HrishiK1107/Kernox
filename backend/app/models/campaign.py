@@ -119,3 +119,11 @@ class CampaignAlert(Base):
 # Indexes
 Index("idx_campaign_alerts_campaign_id", CampaignAlert.campaign_id)
 Index("idx_campaign_alerts_alert_id", CampaignAlert.alert_id)
+Index("idx_campaigns_updated_at", Campaign.updated_at)
+
+# Composite index for rolling window campaign risk
+Index(
+    "idx_campaigns_endpoint_updated_at",
+    Campaign.endpoint_id,
+    Campaign.updated_at,
+)

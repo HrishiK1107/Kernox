@@ -125,3 +125,10 @@ class Alert(Base):
 Index("idx_alerts_endpoint_id", Alert.endpoint_id)
 Index("idx_alerts_rule_name", Alert.rule_name)
 Index("idx_alerts_created_at", Alert.created_at)
+
+# Composite index for rolling window queries
+Index(
+    "idx_alerts_endpoint_created_at",
+    Alert.endpoint_id,
+    Alert.created_at,
+)
