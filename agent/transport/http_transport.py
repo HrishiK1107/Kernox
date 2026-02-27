@@ -2,11 +2,15 @@
 Kernox — HTTP Event Transport
 
 Sends events to backend API via HTTP POST with:
-  - Buffered queue (batch up to 50 events or flush every 2 seconds)
+  - HMAC-SHA256 signature (X-Signature header)
+  - Individual event sending (matches backend's single-event endpoint)
+  - Buffered queue with background sender thread
   - Exponential backoff retry (1s → 2s → 4s → max 30s)
   - Local fallback file if backend unreachable for 60s
 """
 
+import hashlib
+import hmac
 import json
 import os
 import queue
@@ -20,10 +24,10 @@ from agent.logging_config import logger
 
 class HTTPTransport:
     """
-    Thread-safe HTTP event transport with batching and retry.
+    Thread-safe HTTP event transport with HMAC signing and retry.
+    Sends events individually to match the backend's POST /api/v1/events.
     """
 
-    BATCH_SIZE = 50
     FLUSH_INTERVAL_SEC = 2
     MAX_RETRY_DELAY_SEC = 30
     FALLBACK_TIMEOUT_SEC = 60
@@ -36,6 +40,10 @@ class HTTPTransport:
         self._running = False
         self._retry_delay = 1
         self._last_success = time.time()
+
+        # Load HMAC secret
+        from agent.config import HMAC_SECRET
+        self._hmac_secret = HMAC_SECRET
 
     def start(self) -> None:
         """Start the background sender thread."""
@@ -67,24 +75,23 @@ class HTTPTransport:
             logger.warning("Event queue full, dropping event")
 
     def _sender_loop(self) -> None:
-        """Background thread: collect events and send in batches."""
+        """Background thread: dequeue events and send individually."""
         while self._running:
-            batch = self._collect_batch()
-            if not batch:
-                time.sleep(0.1)
+            try:
+                event = self._queue.get(timeout=self.FLUSH_INTERVAL_SEC)
+            except queue.Empty:
                 continue
 
-            success = self._send_batch(batch)
+            success = self._send_event(event)
             if success:
                 self._retry_delay = 1
                 self._last_success = time.time()
             else:
-                # Re-queue failed events
-                for event in batch:
-                    try:
-                        self._queue.put_nowait(event)
-                    except queue.Full:
-                        break
+                # Re-queue failed event
+                try:
+                    self._queue.put_nowait(event)
+                except queue.Full:
+                    pass
 
                 # Check if we've been failing too long
                 if time.time() - self._last_success > self.FALLBACK_TIMEOUT_SEC:
@@ -101,37 +108,31 @@ class HTTPTransport:
                 time.sleep(min(self._retry_delay, self.MAX_RETRY_DELAY_SEC))
                 self._retry_delay = min(self._retry_delay * 2, self.MAX_RETRY_DELAY_SEC)
 
-    def _collect_batch(self) -> list[dict]:
-        """Collect up to BATCH_SIZE events or wait FLUSH_INTERVAL."""
-        batch = []
-        deadline = time.time() + self.FLUSH_INTERVAL_SEC
-
-        while len(batch) < self.BATCH_SIZE and time.time() < deadline:
-            try:
-                event = self._queue.get(timeout=0.1)
-                batch.append(event)
-            except queue.Empty:
-                if batch:
-                    break
-                continue
-
-        return batch
-
-    def _send_batch(self, batch: list[dict]) -> bool:
-        """POST a batch of events to the backend."""
+    def _send_event(self, event: dict) -> bool:
+        """POST a single event to the backend with HMAC signature."""
         try:
-            payload = json.dumps(batch, default=str, ensure_ascii=True).encode("utf-8")
+            payload = json.dumps(event, default=str, ensure_ascii=True).encode("utf-8")
+
+            # Compute HMAC-SHA256 signature
+            signature = hmac.new(
+                self._hmac_secret.encode(),
+                payload,
+                hashlib.sha256,
+            ).hexdigest()
+
             req = Request(
                 self._url,
                 data=payload,
                 headers={
                     "Content-Type": "application/json",
                     "User-Agent": "Kernox-Agent/1.0",
+                    "X-Signature": signature,
                 },
                 method="POST",
             )
             with urlopen(req, timeout=10) as resp:
-                if resp.status == 200 or resp.status == 201:
+                if resp.status in (200, 201, 202):
+                    logger.debug("Event sent: %s (HTTP %d)", event.get("event_id", "?"), resp.status)
                     return True
                 logger.warning("Backend returned HTTP %d", resp.status)
                 return False

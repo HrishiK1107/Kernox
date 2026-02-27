@@ -16,14 +16,17 @@ ENDPOINT_ID = os.environ.get(
 )
 
 # ── Backend connection ───────────────────────────────────────────
-BACKEND_URL = os.environ.get("KERNOX_BACKEND_URL", "http://192.168.1.10:8000")
+BACKEND_URL = os.environ.get("KERNOX_BACKEND_URL", "http://localhost:8000")
 API_EVENTS_ENDPOINT = f"{BACKEND_URL}/api/v1/events"
 API_HEARTBEAT_ENDPOINT = f"{BACKEND_URL}/api/v1/heartbeat"
+
+# ── Security ─────────────────────────────────────────────────────
+HMAC_SECRET = os.environ.get("KERNOX_HMAC_SECRET", "kernox-dev-secret")
 
 # ── Agent behaviour ─────────────────────────────────────────────
 HEARTBEAT_INTERVAL_SEC = int(os.environ.get("KERNOX_HEARTBEAT_INTERVAL", "30"))
 PROCESS_TREE_MAX_SIZE = 10000          # Max tracked processes before pruning
-EVENT_OUTPUT_MODE = "stdout"           # "stdout" | "http" (http for future backend)
+EVENT_OUTPUT_MODE = os.environ.get("KERNOX_EVENT_OUTPUT", "http")  # "stdout" | "http"
 
 # ── Paths ────────────────────────────────────────────────────────
 BPF_PROGRAM_DIR = os.path.join(os.path.dirname(__file__), "ebpf", "bpf_programs")

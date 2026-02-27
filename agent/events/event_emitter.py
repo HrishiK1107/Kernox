@@ -71,6 +71,24 @@ VALID_SEVERITIES = frozenset({
 
 SCHEMA_VERSION = "1.0"
 
+# ── Backend event type mapping ───────────────────────────────
+# Maps agent event types → backend's 7 accepted EventType values.
+# Types not in this map are NOT sent to the backend.
+
+BACKEND_EVENT_TYPE_MAP = {
+    "process_start": "process_start",
+    "process_stop": "process_exit",
+    "file_open": "file_write",
+    "file_write": "file_write",
+    "file_rename": "file_write",
+    "file_delete": "file_delete",
+    "network_connect": "network_connect",
+    "auth_login_failure": "auth_failure",
+    "alert_brute_force": "auth_failure",
+    "privilege_change": "privilege_escalation",
+    "alert_privilege_escalation": "privilege_escalation",
+}
+
 # ── Field length limits (anti-DoS) ───────────────────────────
 
 MAX_STRING_LEN = 256
@@ -176,7 +194,7 @@ class EventEmitter:
             "network": self._build_network(raw),
             "auth": self._build_auth(raw),
 
-            # Optional alert metadata
+            # Optional alert metadata (local only, stripped for backend)
             "alert": self._build_alert(raw),
 
             # Reserved for HMAC signature (future)
@@ -184,6 +202,88 @@ class EventEmitter:
         }
 
         return hardened
+
+    def to_backend_event(self, hardened: dict) -> dict | None:
+        """
+        Transform a hardened agent event into the backend's strict schema.
+
+        Returns None if the event type is not supported by the backend
+        (dns_query, heartbeat, alerts, responses, etc.).
+
+        Backend schema requires:
+          - event_type: one of 7 values
+          - exactly ONE of process/file/network/auth is non-null
+          - no extra fields (extra="forbid")
+        """
+        agent_type = hardened.get("event_type", "")
+        backend_type = BACKEND_EVENT_TYPE_MAP.get(agent_type)
+
+        if backend_type is None:
+            return None  # not a backend-supported event type
+
+        # Map severity — backend only accepts low/medium/high/critical
+        severity = hardened.get("severity", "low")
+        if severity == "info":
+            severity = "low"
+
+        # Build the backend event with exactly one payload
+        backend_event = {
+            "event_id": hardened["event_id"],
+            "schema_version": "1.0",
+            "timestamp": hardened["timestamp"],
+            "endpoint": hardened["endpoint"],
+            "event_type": backend_type,
+            "severity": severity,
+            "process": None,
+            "file": None,
+            "network": None,
+            "auth": None,
+            "signature": hardened.get("signature"),
+        }
+
+        # Set exactly one payload based on backend event type
+        if backend_type in ("process_start", "process_exit", "privilege_escalation"):
+            proc = hardened.get("process") or {}
+            backend_event["process"] = {
+                "pid": proc.get("pid", 0),
+                "ppid": proc.get("ppid", 0),
+                "name": proc.get("name", ""),
+                "path": proc.get("path"),
+                "user": proc.get("user"),
+            }
+
+        elif backend_type in ("file_write", "file_delete"):
+            file_info = hardened.get("file") or {}
+            # Map agent's event_type to operation string
+            op_map = {
+                "file_open": "open",
+                "file_write": "write",
+                "file_rename": "rename",
+                "file_delete": "delete",
+            }
+            backend_event["file"] = {
+                "path": file_info.get("path", ""),
+                "operation": op_map.get(agent_type, "write"),
+            }
+
+        elif backend_type == "network_connect":
+            net = hardened.get("network") or {}
+            backend_event["network"] = {
+                "source_ip": "0.0.0.0",  # agent doesn't capture source IP
+                "destination_ip": net.get("dest_ip", ""),
+                "destination_port": net.get("dest_port", 0),
+            }
+
+        elif backend_type == "auth_failure":
+            auth = hardened.get("auth") or {}
+            proc = hardened.get("process") or {}
+            backend_event["auth"] = {
+                "username": auth.get("target_user", proc.get("user", "")),
+                "method": auth.get("auth_method", "password"),
+                "success": False,
+            }
+
+        return backend_event
 
     def _build_process(self, raw: dict) -> dict | None:
         """Extract process fields if present."""
@@ -303,4 +403,11 @@ class EventEmitter:
             from agent.transport.http_transport import HTTPTransport
             self._http_transport = HTTPTransport(API_EVENTS_ENDPOINT)
             self._http_transport.start()
-        self._http_transport.enqueue(event)
+
+        # Transform to backend schema before sending
+        backend_event = self.to_backend_event(event)
+        if backend_event is not None:
+            self._http_transport.enqueue(backend_event)
+
+        # Always log to stdout too for debugging
+        self._output_stdout(event)
