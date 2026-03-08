@@ -13,5 +13,6 @@ The interface visualizes alerts, endpoint risk, and detection analytics.
 
 Run locally:
 
+cd frontend 
 npm install
 npm run dev
