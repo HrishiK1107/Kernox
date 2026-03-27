@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { Home, Shield, Server, BarChart3, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { mockAlerts } from '../data/mockData';
+import { mockAlerts as fallbackAlerts } from '../data/mockData';
+import { fetchAlerts } from '../lib/api';
 
 interface BottomNavigationProps {
   activeTab: string;
@@ -8,14 +10,29 @@ interface BottomNavigationProps {
 }
 
 const tabs = [
-  { id: 'home',      label: 'Home',      icon: Home },
-  { id: 'alerts',    label: 'Alerts',    icon: Shield },
+  { id: 'home', label: 'Home', icon: Home },
+  { id: 'alerts', label: 'Alerts', icon: Shield },
   { id: 'endpoints', label: 'Endpoints', icon: Server },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
 export function BottomNavigation({ activeTab, onTabChange }: BottomNavigationProps) {
-  const openAlerts = mockAlerts.filter((a) => a.status === 'open').length;
+  const [openAlerts, setOpenAlerts] = useState(
+    fallbackAlerts.filter((a) => a.status === 'open').length,
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const data = await fetchAlerts({ status: 'open', page_size: '1' });
+        if (mounted) setOpenAlerts(data.total);
+      } catch { /* keep fallback */ }
+    }
+    load();
+    const id = setInterval(load, 30_000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
 
   return (
     <motion.div

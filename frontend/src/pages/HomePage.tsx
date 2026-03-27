@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Shield,
@@ -22,17 +23,23 @@ import { GlassCard } from '../components/Card';
 import { MetricCard } from '../components/StatCard';
 import { SystemHealthDropdown } from '../components/BackendStatusDropdown';
 import {
-  mockAlerts,
-  mockTrends,
-  mockDistribution,
-  calculateMetrics,
+  fetchAlerts,
+  fetchSeverityDistribution,
+  fetchTrends,
+  type AlertPayload,
+  type SeverityBucket,
+  type TrendBucket,
+} from '../lib/api';
+import {
+  mockAlerts as fallbackAlerts,
+  mockTrends as fallbackTrends,
+  mockDistribution as fallbackDistribution,
+  calculateMetrics as fallbackMetrics,
 } from '../data/mockData';
 import { useTheme } from '../context/ThemeContext';
 
 export default function HomePage() {
-  const metrics = calculateMetrics();
   const { colors } = useTheme();
-
   const severityColors = colors.severity;
   const pieColors = [
     severityColors.critical,
@@ -41,10 +48,105 @@ export default function HomePage() {
     severityColors.low,
   ];
 
-  const chartData = mockTrends.map((trend) => ({
-    date: new Date(trend.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    total: trend.critical + trend.high + trend.medium + trend.low,
-    ...trend,
+  // Live data state — falls back to mock if API unreachable
+  const [alerts, setAlerts] = useState(fallbackAlerts);
+  const [trends, setTrends] = useState(
+    fallbackTrends.map((t) => ({
+      bucket: t.timestamp,
+      ...t,
+    })),
+  );
+  const [distribution, setDistribution] = useState(fallbackDistribution);
+  const [metrics, setMetrics] = useState(fallbackMetrics());
+  const [live, setLive] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      try {
+        // Fetch alerts
+        const alertData = await fetchAlerts({ page_size: '100' });
+        if (!mounted) return;
+
+        const mapped = alertData.results.map((a) => ({
+          alert_id: `ALT-${a.id}`,
+          endpoint_id: String(a.endpoint_id),
+          endpoint_hostname: String(a.endpoint_id),
+          severity: a.severity as 'critical' | 'high' | 'medium' | 'low',
+          risk_score: a.risk_score,
+          status: a.status as 'open' | 'investigating' | 'resolved',
+          detection_rule: a.detection_rule,
+          description: a.payload?.description || a.detection_rule,
+          payload: a.payload,
+          created_at: a.created_at,
+          updated_at: a.updated_at,
+          resolved_at: a.resolved_at,
+        }));
+        setAlerts(mapped);
+
+        // Compute metrics from live data
+        const totalAlerts = alertData.total;
+        const criticalAlerts = mapped.filter((a) => a.severity === 'critical').length;
+        const highAlerts = mapped.filter((a) => a.severity === 'high').length;
+        setMetrics((prev) => ({
+          ...prev,
+          totalAlerts,
+          criticalAlerts,
+          highAlerts,
+        }));
+
+        setLive(true);
+      } catch {
+        // keep fallback
+      }
+
+      // Severity distribution
+      try {
+        const dist = await fetchSeverityDistribution();
+        if (!mounted) return;
+        const total = dist.reduce((s, d) => s + d.count, 0) || 1;
+        setDistribution(
+          dist.map((d) => ({
+            severity: d.severity.charAt(0).toUpperCase() + d.severity.slice(1),
+            count: d.count,
+            percentage: Math.round((d.count / total) * 1000) / 10,
+          })),
+        );
+      } catch {
+        // keep fallback
+      }
+
+      // Trends
+      try {
+        const now = new Date();
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const trendData = await fetchTrends(
+          weekAgo.toISOString(),
+          now.toISOString(),
+          'daily',
+        );
+        if (!mounted) return;
+        if (trendData.length > 0) {
+          setTrends(trendData);
+        }
+      } catch {
+        // keep fallback
+      }
+    }
+
+    load();
+    const id = setInterval(load, 30_000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
+
+  const chartData = trends.map((t) => ({
+    date: new Date(t.bucket || (t as any).timestamp).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    }),
+    total: t.critical + t.high + t.medium + t.low,
+    ...t,
   }));
 
   return (
@@ -75,34 +177,39 @@ export default function HomePage() {
             <h1 className="text-4xl tracking-tight">Kernox Security Platform</h1>
             <SystemHealthDropdown />
           </div>
-          <p className="text-muted-foreground">Command overview and security metrics</p>
+          <p className="text-muted-foreground">
+            Command overview and security metrics
+            {live && (
+              <span className="ml-2 text-emerald-400 text-xs font-mono">● LIVE</span>
+            )}
+          </p>
         </motion.div>
 
         {/* Metric Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-12">
-          <MetricCard title="Total Alerts"    value={metrics.totalAlerts}    icon={Shield}      delay={0.1} />
+          <MetricCard title="Total Alerts" value={metrics.totalAlerts} icon={Shield} delay={0.1} />
           <MetricCard title="Critical Alerts" value={metrics.criticalAlerts} icon={AlertCircle} delay={0.15} />
-          <MetricCard title="High Alerts"     value={metrics.highAlerts}     icon={AlertTriangle} delay={0.2} />
-          <MetricCard title="Total Endpoints" value={metrics.totalEndpoints} icon={Server}      delay={0.25} />
-          <MetricCard title="Avg Risk Index"  value={metrics.avgRiskIndex}   icon={Activity}    delay={0.3} />
+          <MetricCard title="High Alerts" value={metrics.highAlerts} icon={AlertTriangle} delay={0.2} />
+          <MetricCard title="Total Endpoints" value={metrics.totalEndpoints} icon={Server} delay={0.25} />
+          <MetricCard title="Avg Risk Index" value={metrics.avgRiskIndex} icon={Activity} delay={0.3} />
         </div>
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-12">
-          {/* Trend Chart — white gradient area */}
+          {/* Trend Chart */}
           <GlassCard className="lg:col-span-2" delay={0.35}>
             <h3 className="text-xl mb-6">Alert Trends (7 Days)</h3>
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="whiteAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#FFFFFF" stopOpacity={0.22} />
+                    <stop offset="5%" stopColor="#FFFFFF" stopOpacity={0.22} />
                     <stop offset="60%" stopColor="#FFFFFF" stopOpacity={0.06} />
                     <stop offset="95%" stopColor="#FFFFFF" stopOpacity={0.0} />
                   </linearGradient>
                   <linearGradient id="whiteStrokeGradient" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%"   stopColor="#A0AEBF" stopOpacity={0.6} />
-                    <stop offset="50%"  stopColor="#FFFFFF" stopOpacity={1} />
+                    <stop offset="0%" stopColor="#A0AEBF" stopOpacity={0.6} />
+                    <stop offset="50%" stopColor="#FFFFFF" stopOpacity={1} />
                     <stop offset="100%" stopColor="#A0AEBF" stopOpacity={0.6} />
                   </linearGradient>
                 </defs>
@@ -120,18 +227,18 @@ export default function HomePage() {
                   tickLine={false}
                 />
                 <Tooltip
-  formatter={(value: number, name: string) => [
-    <span style={{ fontFamily: "monospace" }}>{value}</span>,
-    name === "total" ? "Total" : name
-  ]}
-  contentStyle={{
-    backgroundColor: '#060D1A',
-    border: '1px solid rgba(255,255,255,0.1)',
-    borderRadius: '0.5rem',
-  }}
-  labelStyle={{ color: '#E2DED8' }}
-  itemStyle={{ color: '#FFFFFF' }}
-/>
+                  formatter={(value: number, name: string) => [
+                    <span style={{ fontFamily: "monospace" }}>{value}</span>,
+                    name === "total" ? "Total" : name
+                  ]}
+                  contentStyle={{
+                    backgroundColor: '#060D1A',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '0.5rem',
+                  }}
+                  labelStyle={{ color: '#E2DED8' }}
+                  itemStyle={{ color: '#FFFFFF' }}
+                />
                 <Area
                   type="monotone"
                   dataKey="total"
@@ -151,56 +258,51 @@ export default function HomePage() {
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
-  data={mockDistribution}
-  dataKey="count"
-  nameKey="severity"
-  cx="50%"
-  cy="50%"
-  innerRadius={55}
-  outerRadius={90}
-  paddingAngle={3}
-  activeShape={(props: any) => {
-    return <Sector {...props} outerRadius={props.outerRadius + 10} />
-}}
-  isAnimationActive={true}
->
-                  {mockDistribution.map((_, index) => (
+                  data={distribution}
+                  dataKey="count"
+                  nameKey="severity"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={55}
+                  outerRadius={90}
+                  paddingAngle={3}
+                  activeShape={(props: any) => (
+                    <Sector {...props} outerRadius={props.outerRadius + 10} />
+                  )}
+                  isAnimationActive={true}
+                >
+                  {distribution.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                   ))}
                 </Pie>
                 <Tooltip
-  content={({ active, payload }) => {
-    if (!active || !payload || !payload.length) return null
-
-    const data = payload[0].payload
-    const severity = data.severity
-
-    const color =
-      severityColors[severity as keyof typeof severityColors]
-
-    return (
-      <div
-        style={{
-          background: '#060D1A',
-          border: '1px solid rgba(122,72,50,0.18)',
-          borderRadius: '8px',
-          padding: '8px 12px',
-        }}
-      >
-        <div style={{ color }}>
-          {severity.charAt(0).toUpperCase() + severity.slice(1)} :{" "}
-          <span style={{ fontFamily: "monospace" }}>
-            {data.count}
-          </span>
-        </div>
-      </div>
-    )
-  }}
-/>
+                  content={({ active, payload }) => {
+                    if (!active || !payload || !payload.length) return null;
+                    const data = payload[0].payload;
+                    const sev = data.severity;
+                    const color =
+                      severityColors[sev.toLowerCase() as keyof typeof severityColors];
+                    return (
+                      <div
+                        style={{
+                          background: '#060D1A',
+                          border: '1px solid rgba(122,72,50,0.18)',
+                          borderRadius: '8px',
+                          padding: '8px 12px',
+                        }}
+                      >
+                        <div style={{ color }}>
+                          {sev}:{' '}
+                          <span style={{ fontFamily: 'monospace' }}>{data.count}</span>
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
             <div className="grid grid-cols-2 gap-2 mt-2">
-              {mockDistribution.map((item, index) => (
+              {distribution.map((item, index) => (
                 <div key={item.severity} className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: pieColors[index] }} />
                   <span className="text-sm text-muted-foreground capitalize">{item.severity}</span>
@@ -226,7 +328,7 @@ export default function HomePage() {
                 </tr>
               </thead>
               <tbody>
-                {mockAlerts.slice(0, 5).map((alert, index) => (
+                {alerts.slice(0, 5).map((alert, index) => (
                   <motion.tr
                     key={alert.alert_id}
                     initial={{ opacity: 0 }}

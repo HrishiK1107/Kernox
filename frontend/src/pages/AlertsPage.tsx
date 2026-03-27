@@ -9,7 +9,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { Filter, Search, ChevronDown, X } from "lucide-react";
 import { GlassCard } from "../components/Card";
 import { AlertDrawer } from "../components/AlertDrawer";
-import { mockAlerts, Alert } from "../data/mockData";
+import { mockAlerts as fallbackAlerts, Alert } from "../data/mockData";
+import { fetchAlerts } from "../lib/api";
 import { useTheme } from "../context/ThemeContext";
 
 // ─── Portal dropdown — renders outside stacking contexts ───────────────────
@@ -194,6 +195,36 @@ export default function AlertsPage() {
   const [severityFilter, setSeverityFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [allAlerts, setAllAlerts] = useState<Alert[]>(fallbackAlerts);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const data = await fetchAlerts({ page_size: '100' });
+        if (!mounted) return;
+        setAllAlerts(
+          data.results.map((a) => ({
+            alert_id: `ALT-${a.id}`,
+            endpoint_id: String(a.endpoint_id),
+            endpoint_hostname: String(a.endpoint_id),
+            severity: a.severity as Alert['severity'],
+            risk_score: a.risk_score,
+            status: a.status as Alert['status'],
+            detection_rule: a.detection_rule,
+            description: a.payload?.description || a.detection_rule,
+            payload: a.payload,
+            created_at: a.created_at,
+            updated_at: a.updated_at,
+            resolved_at: a.resolved_at,
+          })),
+        );
+      } catch { /* keep fallback */ }
+    }
+    load();
+    const id = setInterval(load, 30_000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
 
   const severityColors = colors.severity;
 
@@ -202,7 +233,7 @@ export default function AlertsPage() {
     setIsDrawerOpen(true);
   };
 
-  const filteredAlerts = mockAlerts.filter((alert) => {
+  const filteredAlerts = allAlerts.filter((alert) => {
     const severityMatch =
       severityFilter === "all" ||
       alert.severity === severityFilter;
@@ -321,7 +352,7 @@ export default function AlertsPage() {
               <span className="text-sm font-mono text-[#5C6474]">
                 {filteredAlerts.length}
                 <span className="text-[#3A4455]">
-                  /{mockAlerts.length}
+                  /{allAlerts.length}
                 </span>
               </span>
             </div>
@@ -331,36 +362,36 @@ export default function AlertsPage() {
           {(severityFilter !== "all" ||
             statusFilter !== "all" ||
             searchQuery) && (
-            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#7A4832]/10 flex-wrap">
-              <span className="text-xs text-[#5C6474]">
-                Active:
-              </span>
-              {severityFilter !== "all" && (
-                <button
-                  onClick={() => setSeverityFilter("all")}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-[#7A4832]/25 bg-[#7A4832]/10 text-[#C4855A] hover:bg-[#7A4832]/20 transition-colors"
-                >
-                  {severityFilter} <X className="w-3 h-3" />
-                </button>
-              )}
-              {statusFilter !== "all" && (
-                <button
-                  onClick={() => setStatusFilter("all")}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-[#7A4832]/25 bg-[#7A4832]/10 text-[#C4855A] hover:bg-[#7A4832]/20 transition-colors"
-                >
-                  {statusFilter} <X className="w-3 h-3" />
-                </button>
-              )}
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-[#7A4832]/25 bg-[#7A4832]/10 text-[#C4855A] hover:bg-[#7A4832]/20 transition-colors"
-                >
-                  "{searchQuery}" <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          )}
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#7A4832]/10 flex-wrap">
+                <span className="text-xs text-[#5C6474]">
+                  Active:
+                </span>
+                {severityFilter !== "all" && (
+                  <button
+                    onClick={() => setSeverityFilter("all")}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-[#7A4832]/25 bg-[#7A4832]/10 text-[#C4855A] hover:bg-[#7A4832]/20 transition-colors"
+                  >
+                    {severityFilter} <X className="w-3 h-3" />
+                  </button>
+                )}
+                {statusFilter !== "all" && (
+                  <button
+                    onClick={() => setStatusFilter("all")}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-[#7A4832]/25 bg-[#7A4832]/10 text-[#C4855A] hover:bg-[#7A4832]/20 transition-colors"
+                  >
+                    {statusFilter} <X className="w-3 h-3" />
+                  </button>
+                )}
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-[#7A4832]/25 bg-[#7A4832]/10 text-[#C4855A] hover:bg-[#7A4832]/20 transition-colors"
+                  >
+                    "{searchQuery}" <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            )}
         </GlassCard>
 
         {/* Alerts Table */}
@@ -452,7 +483,7 @@ export default function AlertsPage() {
                                   width: `${alert.risk_score}%`,
                                   backgroundColor:
                                     severityColors[
-                                      alert.severity
+                                    alert.severity
                                     ],
                                 }}
                               />

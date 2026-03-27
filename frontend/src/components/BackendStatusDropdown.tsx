@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronDown, Check, Wifi, Database, Cpu, Zap } from 'lucide-react';
+import { ChevronDown, Check, Wifi, Database, Cpu, Zap, X } from 'lucide-react';
+import { fetchHealth } from '../lib/api';
 
 interface StatusItem {
   icon: typeof Wifi;
@@ -9,17 +10,45 @@ interface StatusItem {
   ok: boolean;
 }
 
-const statusItems: StatusItem[] = [
-  { icon: Wifi,     label: 'API',              value: 'Connected',  ok: true },
-  { icon: Database, label: 'PostgreSQL',        value: 'Connected',  ok: true },
-  { icon: Cpu,      label: 'Agents Online',     value: '8 / 10',     ok: true },
-  { icon: Zap,      label: 'Detection Engine',  value: 'Running',    ok: true },
-];
-
 export function SystemHealthDropdown() {
   const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<StatusItem[]>([
+    { icon: Wifi, label: 'API', value: 'Checking…', ok: false },
+    { icon: Database, label: 'Database', value: 'Checking…', ok: false },
+    { icon: Cpu, label: 'Agents Online', value: '—', ok: false },
+    { icon: Zap, label: 'Detection Engine', value: 'Checking…', ok: false },
+  ]);
   const ref = useRef<HTMLDivElement>(null);
+  const allOk = items.every((i) => i.ok);
 
+  // Poll backend health every 15 s
+  useEffect(() => {
+    let mounted = true;
+
+    async function check() {
+      try {
+        const data = await fetchHealth();
+        if (!mounted) return;
+        setItems([
+          { icon: Wifi, label: 'API', value: 'Connected', ok: true },
+          { icon: Database, label: 'Database', value: 'Connected', ok: data.status === 'ok' },
+          { icon: Cpu, label: 'Agents Online', value: '—', ok: true },
+          { icon: Zap, label: 'Detection Engine', value: 'Running', ok: true },
+        ]);
+      } catch {
+        if (!mounted) return;
+        setItems((prev) =>
+          prev.map((i) => (i.label === 'API' ? { ...i, value: 'Offline', ok: false } : i)),
+        );
+      }
+    }
+
+    check();
+    const id = setInterval(check, 15_000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
+
+  // Click-outside close
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -32,17 +61,23 @@ export function SystemHealthDropdown() {
 
   return (
     <div ref={ref} className="relative select-none">
-      {/* Trigger — labelled "Backend Status" */}
+      {/* Trigger */}
       <motion.button
         onClick={() => setOpen((v) => !v)}
         whileTap={{ scale: 0.97 }}
         className="flex items-center gap-2.5 px-4 py-2 rounded-xl border border-[#7A4832]/20 bg-[#060D1A]/60 hover:bg-[#060D1A]/80 transition-colors"
         style={{ backdropFilter: 'blur(12px)' }}
       >
-        {/* Animated green dot */}
+        {/* Animated dot — green when all ok, red otherwise */}
         <span className="relative flex items-center justify-center w-2.5 h-2.5">
-          <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-500/40 animate-ping" />
-          <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-emerald-400" />
+          <span
+            className={`absolute inline-flex h-full w-full rounded-full animate-ping ${allOk ? 'bg-emerald-500/40' : 'bg-red-500/40'
+              }`}
+          />
+          <span
+            className={`relative inline-flex w-2.5 h-2.5 rounded-full ${allOk ? 'bg-emerald-400' : 'bg-red-400'
+              }`}
+          />
         </span>
         <span className="text-sm text-[#E2DED8]/90 tracking-wide">Backend Status</span>
         <motion.span
@@ -69,14 +104,14 @@ export function SystemHealthDropdown() {
               backdropFilter: 'blur(20px)',
             }}
           >
-            {/* Header "System Health" */}
+            {/* Header */}
             <div className="px-4 py-3 border-b border-[#7A4832]/15">
               <p className="text-xs text-[#5C6474] tracking-widest uppercase">System Health</p>
             </div>
 
             {/* Status rows */}
             <div className="py-2">
-              {statusItems.map((item, i) => {
+              {items.map((item, i) => {
                 const Icon = item.icon;
                 return (
                   <motion.div
@@ -90,7 +125,7 @@ export function SystemHealthDropdown() {
                       {item.ok ? (
                         <Check className="w-3.5 h-3.5 text-emerald-400" strokeWidth={2.5} />
                       ) : (
-                        <span className="w-2 h-2 rounded-full bg-red-500" />
+                        <X className="w-3.5 h-3.5 text-red-400" strokeWidth={2.5} />
                       )}
                     </span>
                     <span className="flex-1 text-sm text-[#8A9BB0]">{item.label}</span>
@@ -107,8 +142,10 @@ export function SystemHealthDropdown() {
 
             {/* Footer */}
             <div className="px-4 py-2.5 border-t border-[#7A4832]/15 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-xs text-[#5C6474]">All systems operational</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${allOk ? 'bg-emerald-400' : 'bg-red-400'}`} />
+              <span className="text-xs text-[#5C6474]">
+                {allOk ? 'All systems operational' : 'Some systems degraded'}
+              </span>
             </div>
           </motion.div>
         )}

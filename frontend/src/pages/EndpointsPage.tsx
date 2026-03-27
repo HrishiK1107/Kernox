@@ -1,11 +1,40 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Server, Circle } from 'lucide-react';
 import { GlassCard } from '../components/Card';
-import { mockEndpoints } from '../data/mockData';
+import { mockEndpoints as fallbackEndpoints, Endpoint } from '../data/mockData';
+import { fetchEndpointRisk } from '../lib/api';
 import { useTheme } from '../context/ThemeContext';
 
 export default function EndpointsPage() {
   const { colors } = useTheme();
+  const [endpoints, setEndpoints] = useState(fallbackEndpoints);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const data = await fetchEndpointRisk({ page_size: '100' });
+        if (!mounted) return;
+        if (data.results.length > 0) {
+          setEndpoints(
+            data.results.map((ep) => ({
+              endpoint_id: ep.endpoint_id,
+              hostname: ep.hostname || ep.endpoint_id,
+              risk_index: ep.risk_index,
+              last_seen: new Date().toISOString(),
+              status: (ep.risk_index >= 80 ? 'warning' : 'online') as Endpoint['status'],
+              os: '—',
+              ip_address: '—',
+            })),
+          );
+        }
+      } catch { /* keep fallback */ }
+    }
+    load();
+    const id = setInterval(load, 30_000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
 
   const getRiskColor = (risk: number) => {
     if (risk >= 80) return colors.severity.critical;
@@ -26,6 +55,11 @@ export default function EndpointsPage() {
         return '#4A5568';
     }
   };
+
+  const highRiskCount = endpoints.filter((e) => e.risk_index >= 60).length;
+  const avgRisk = endpoints.length > 0
+    ? Math.round(endpoints.reduce((sum, e) => sum + e.risk_index, 0) / endpoints.length)
+    : 0;
 
   return (
     <div className="min-h-screen pb-16 relative overflow-hidden">
@@ -59,7 +93,7 @@ export default function EndpointsPage() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-muted-foreground mb-2">Total Endpoints</p>
-                <p className="text-3xl">{mockEndpoints.length}</p>
+                <p className="text-3xl">{endpoints.length}</p>
               </div>
               <div className="p-3 bg-accent/10 rounded-lg">
                 <Server className="w-6 h-6 text-accent" />
@@ -70,21 +104,14 @@ export default function EndpointsPage() {
           <GlassCard delay={0.15}>
             <div>
               <p className="text-muted-foreground mb-2">High Risk Endpoints</p>
-              <p className="text-3xl">
-                {mockEndpoints.filter((e) => e.risk_index >= 60).length}
-              </p>
+              <p className="text-3xl">{highRiskCount}</p>
             </div>
           </GlassCard>
 
           <GlassCard delay={0.2}>
             <div>
               <p className="text-muted-foreground mb-2">Average Risk Index</p>
-              <p className="text-3xl">
-                {Math.round(
-                  mockEndpoints.reduce((sum, e) => sum + e.risk_index, 0) /
-                    mockEndpoints.length
-                )}
-              </p>
+              <p className="text-3xl">{avgRisk}</p>
             </div>
           </GlassCard>
         </div>
@@ -105,7 +132,7 @@ export default function EndpointsPage() {
                 </tr>
               </thead>
               <tbody>
-                {mockEndpoints.map((endpoint, index) => (
+                {endpoints.map((endpoint, index) => (
                   <motion.tr
                     key={endpoint.endpoint_id}
                     initial={{ opacity: 0 }}

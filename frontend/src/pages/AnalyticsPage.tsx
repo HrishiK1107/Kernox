@@ -1,7 +1,12 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { TrendingUp, PieChart as PieChartIcon } from 'lucide-react';
 import { GlassCard } from '../components/Card';
-import { mockTrends, mockDistribution } from '../data/mockData';
+import {
+  mockTrends as fallbackTrends,
+  mockDistribution as fallbackDistribution,
+} from '../data/mockData';
+import { fetchTrends, fetchSeverityDistribution } from '../lib/api';
 import { useTheme } from '../context/ThemeContext';
 import {
   LineChart,
@@ -41,22 +46,22 @@ function CustomTooltip({ active, payload, label }: any) {
       <div style={{ marginBottom: 6 }}>{label}</div>
 
       {sorted.map((entry: any) => (
-  <div
-    key={entry.name}
-    style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      gap: 16,
-      color: entry.color
-    }}
-  >
-    <span>{entry.name}</span>
+        <div
+          key={entry.name}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: 16,
+            color: entry.color
+          }}
+        >
+          <span>{entry.name}</span>
 
-    <span style={{textAlign: 'right', minWidth: 24 }}>
-      {entry.value}
-    </span>
-  </div>
-))}
+          <span style={{ textAlign: 'right', minWidth: 24 }}>
+            {entry.value}
+          </span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -107,7 +112,53 @@ function TrendTooltip({ active, payload, label }: any) {
 export default function AnalyticsPage() {
   const { colors } = useTheme();
 
-  const chartData = mockTrends.map((trend) => ({
+  const [trends, setTrends] = useState(fallbackTrends);
+  const [distribution, setDistribution] = useState(fallbackDistribution);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const now = new Date();
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const trendData = await fetchTrends(
+          weekAgo.toISOString(),
+          now.toISOString(),
+          'daily',
+        );
+        if (!mounted) return;
+        if (trendData.length > 0) {
+          setTrends(
+            trendData.map((t) => ({
+              timestamp: t.bucket,
+              critical: t.critical,
+              high: t.high,
+              medium: t.medium,
+              low: t.low,
+            })),
+          );
+        }
+      } catch { /* keep fallback */ }
+
+      try {
+        const dist = await fetchSeverityDistribution();
+        if (!mounted) return;
+        const total = dist.reduce((s, d) => s + d.count, 0) || 1;
+        setDistribution(
+          dist.map((d) => ({
+            severity: d.severity.charAt(0).toUpperCase() + d.severity.slice(1),
+            count: d.count,
+            percentage: Math.round((d.count / total) * 1000) / 10,
+          })),
+        );
+      } catch { /* keep fallback */ }
+    }
+    load();
+    const id = setInterval(load, 30_000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
+
+  const chartData = trends.map((trend) => ({
     date: new Date(trend.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     Critical: trend.critical,
     High: trend.high,
@@ -117,9 +168,9 @@ export default function AnalyticsPage() {
 
   const severityColors = {
     Critical: colors.severity.critical,
-    High:     colors.severity.high,
-    Medium:   colors.severity.medium,
-    Low:      colors.severity.low,
+    High: colors.severity.high,
+    Medium: colors.severity.medium,
+    Low: colors.severity.low,
   };
 
   const pieColors = [
@@ -234,7 +285,7 @@ export default function AnalyticsPage() {
             <ResponsiveContainer width="100%" height={350}>
               <PieChart>
                 <Pie
-                  data={mockDistribution}
+                  data={distribution}
                   dataKey="count"
                   nameKey="severity"
                   cx="50%"
@@ -245,40 +296,40 @@ export default function AnalyticsPage() {
                   label={({ severity, percentage }) => `${severity}: ${percentage}%`}
                   labelLine={{ stroke: '#9CA3AF' }}
                 >
-                  {mockDistribution.map((entry, index) => (
+                  {distribution.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
                   ))}
                 </Pie>
                 <Tooltip
-  contentStyle={{
-    backgroundColor: '#0A1628',
-    border: '1px solid rgba(122, 72, 50, 0.25)',
-    borderRadius: '0.5rem',
-  }}
-  labelStyle={{ color: '#E2DED8' }}
-  formatter={(value: number, name: string) => [
-    <span
-      style={{
-        color: severityColors[name as keyof typeof severityColors],
-        fontFamily: 'monospace'
-      }}
-    >
-      {value}
-    </span>,
-    <span
-      style={{
-        color: severityColors[name as keyof typeof severityColors]
-      }}
-    >
-      {name}
-    </span>,
-  ]}
-/>
+                  contentStyle={{
+                    backgroundColor: '#0A1628',
+                    border: '1px solid rgba(122, 72, 50, 0.25)',
+                    borderRadius: '0.5rem',
+                  }}
+                  labelStyle={{ color: '#E2DED8' }}
+                  formatter={(value: number, name: string) => [
+                    <span
+                      style={{
+                        color: severityColors[name as keyof typeof severityColors],
+                        fontFamily: 'monospace'
+                      }}
+                    >
+                      {value}
+                    </span>,
+                    <span
+                      style={{
+                        color: severityColors[name as keyof typeof severityColors]
+                      }}
+                    >
+                      {name}
+                    </span>,
+                  ]}
+                />
               </PieChart>
             </ResponsiveContainer>
 
             <div className="grid grid-cols-2 gap-3 mt-6">
-              {mockDistribution.map((item, index) => (
+              {distribution.map((item, index) => (
                 <div
                   key={item.severity}
                   className="flex items-center justify-between p-3 bg-muted/20 rounded-lg"
