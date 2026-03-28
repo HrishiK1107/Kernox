@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # ─────────────────────────────────────────────
     MAX_TIMESTAMP_DRIFT_SECONDS: int = 300
     MAX_REQUEST_SIZE: int = 1_048_576
-    MAX_EVENTS_PER_MINUTE: int = 1000
+    MAX_EVENTS_PER_MINUTE: int = 50000
     RATE_LIMIT_WINDOW_SECONDS: int = 60
 
     # ─────────────────────────────────────────────
