@@ -1,7 +1,9 @@
 <p align="center">
   <h1 align="center">Kernox</h1>
   <p align="center">
-    Real-time Endpoint Detection & Response (EDR) Platform
+    <b>Real-time Endpoint Detection &amp; Response (EDR) Platform for Linux</b>
+    <br />
+    Kernel-level telemetry with <em>eBPF</em> · signed ingestion pipeline · detection &amp; correlation engine · security analytics dashboard
     <br />
     <em>eBPF Agent · FastAPI Backend · React Dashboard</em>
   </p>
@@ -19,6 +21,26 @@
 ---
 
 Kernox is a production-grade EDR platform that monitors Linux endpoints in real time using eBPF, processes telemetry through a detection and correlation pipeline, and visualizes security insights on a modern dashboard. The system consists of three core components: a kernel-level **Agent**, a **Backend** API with detection/correlation engines, and a **Frontend** security dashboard.
+
+### Highlights
+
+- 🛰️ **Kernel-level visibility** — 7 eBPF + log-based monitors track process, file, network, DNS, privilege, and authentication activity straight from kernel hooks.
+- 🔐 **Zero-trust telemetry pipeline** — every event is HMAC-SHA256 signed, replay-guarded, timestamp-validated, and rate-limited before it's trusted.
+- 🧠 **Detection → Correlation → Risk scoring** — server-side rules generate alerts, group them into attack **campaigns**, and produce an explainable composite risk score.
+- ⚔️ **Built-in red team suite** — 8 safe, non-destructive attack simulations (ransomware, C2 beaconing, brute force, privilege escalation, and more) to validate detections end-to-end.
+- 🖥️ **Full-stack SOC dashboard** — React 18 + Recharts security console with live alerts, endpoint health, and analytics.
+- 🚀 **DevSecOps ready** — GitHub Actions CI/CD with linting, `pytest`, Bandit security scanning, and config validation on every push.
+
+### What This Project Demonstrates
+
+| Domain | Skills shown in Kernox |
+|--------|------------------------|
+| **Detection Engineering** | Sigma-style YAML rule DSL, time-windowed SQL detection rules, alert cooldown, MITRE-style behavioral detections (C2 beaconing, ransomware burst, privilege escalation) |
+| **Endpoint / Kernel Security** | eBPF programming against `execve`, `openat`, `tcp_connect`, `setuid` and more; process lineage DAG; container-aware tracking |
+| **Secure API Design** | HMAC-SHA256 request signing, replay protection, timestamp drift validation, per-endpoint rate limiting, hardened middleware stack |
+| **Threat Correlation & Analytics** | Sliding-window campaign correlation, deterministic explainable risk scoring, analytics API + dashboards |
+| **Full-Stack Engineering** | FastAPI + PostgreSQL backend, React 18 + Vite + TailwindCSS frontend, typed API client |
+| **DevSecOps** | CI/CD pipeline, static analysis (Bandit), linting (Ruff), systemd hardening, automated setup scripts |
 
 ---
 
